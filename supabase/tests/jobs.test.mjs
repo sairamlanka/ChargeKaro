@@ -28,8 +28,9 @@ describe('compliance jobs', () => {
     await sql(
       `insert into public.station_documents (business_id, station_id, document_type_id, storage_path, file_name, mime_type,
                                              size_bytes, status, expires_on, uploaded_by)
-       select $1, $2, $3, $1 || '/' || $2 || '/strict.pdf', 'strict.pdf', 'application/pdf', 100, 'approved', current_date - 1, owner_id
-         from public.businesses where id = $1`, [business.business_id, stationId, type.id]);
+       select $1::uuid, $2::uuid, $3::uuid, $1::text || '/' || $2::text || '/strict.pdf', 'strict.pdf', 'application/pdf', 100,
+              'approved', current_date - 1, owner_id
+         from public.businesses where id = $1::uuid`, [business.business_id, stationId, type.id]);
     const res = await rpc('service', 'run_compliance_jobs');
     assert.ok(res.stations_suspended >= 1);
     assert.equal((await one(`select status from public.stations where id = $1`, [stationId])).status, 'suspended');
