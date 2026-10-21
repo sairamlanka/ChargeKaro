@@ -1,0 +1,8 @@
+{
+  "SUPABASE_URL": "https://<project-ref>.supabase.co",
+  "SUPABASE_ANON_KEY": "sb_publishable_...",
+  "APP_ENV": "production",
+  "AUTH_REDIRECT_URL": "in.chargekaro.business://auth-callback",
+  "MAPS_ENABLED": "false",
+  "FCM_ENABLED": "false"
+}

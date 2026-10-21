@@ -10,6 +10,9 @@ key.properties
 google-services.json
 GoogleService-Info.plist
 service-account*.json
+env/*.json
+!env/*.json.example
+Secrets.xcconfig
 
 # Tooling
 node_modules/
