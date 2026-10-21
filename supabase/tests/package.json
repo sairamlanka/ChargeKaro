@@ -1,0 +1,15 @@
+{
+  "name": "chargekaro-db-tests",
+  "private": true,
+  "type": "module",
+  "description": "Database integration, RLS, concurrency and payment workflow tests (Node test runner + pg).",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 --test-reporter=spec ./*.test.mjs"
+  },
+  "dependencies": {
+    "pg": "8.16.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

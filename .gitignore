@@ -1,0 +1,28 @@
+# Secrets
+.env
+.env.*
+!.env.example
+**/supabase/.env
+supabase/functions/.env
+*.keystore
+*.jks
+key.properties
+google-services.json
+GoogleService-Info.plist
+service-account*.json
+
+# Tooling
+node_modules/
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec_overrides.yaml
+coverage/
+.idea/
+.vscode/
+*.iml
+.DS_Store
+supabase/.branches
+supabase/.temp
