@@ -81,7 +81,8 @@ class AdminRepository extends Repository {
   Future<void> revokeRole(String userId, String reason) =>
       rpc<void>('revoke_platform_role', {'p_user_id': userId, 'p_reason': reason});
 
-  Future<void> setPermissionOverride(String userId, String permission, bool granted) => rpc<void>(
+  /// [granted] null removes the override so the role default applies.
+  Future<void> setPermissionOverride(String userId, String permission, bool? granted) => rpc<void>(
       'set_platform_permission_override', {'p_user_id': userId, 'p_permission': permission, 'p_granted': granted});
 
   Future<List<Map<String, dynamic>>> permissions() =>
