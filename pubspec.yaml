@@ -1,0 +1,17 @@
+name: chargekaro_workspace
+description: Pub workspace for the ChargeKaro Flutter apps and shared packages.
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+workspace:
+  - packages/shared_models
+  - packages/shared_validation
+  - packages/shared_data
+  - packages/shared_ui
+  - apps/business_app
+  - apps/admin_panel
+
+dev_dependencies:
+  lints: ^6.0.0

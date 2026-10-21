@@ -1,0 +1,12 @@
+name: shared_validation
+description: Form and input validation rules shared by the ChargeKaro apps. Pure Dart; mirrors database checks.
+version: 1.0.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.26.0

@@ -1,0 +1,22 @@
+name: shared_data
+description: Supabase client bootstrap, repositories and Riverpod providers shared by the ChargeKaro apps.
+version: 1.0.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+  flutter: ">=3.38.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^3.4.3
+  meta: ^1.16.0
+  shared_models:
+  supabase_flutter: ^2.18.3
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
