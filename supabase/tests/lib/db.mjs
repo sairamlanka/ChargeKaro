@@ -275,9 +275,9 @@ export async function insertBooking({ customer, stationId, pointId, start, minut
   return one(
     `insert into public.bookings (customer_id, station_id, charging_point_id, period, occupancy, status, payment_status,
                                   booking_fee_paise, hold_expires_at, confirmed_at, customer_display_name)
-     values ($1, $2, $3, tstzrange($4, $5), tstzrange($4, $5), $6, $7, $8,
-             case when $6 = 'payment_pending' then now() + interval '10 minutes' end,
-             case when $6 = 'confirmed' then now() end, 'Test C.')
+     values ($1, $2, $3, tstzrange($4, $5), tstzrange($4, $5), $6::public.booking_status, $7::public.booking_payment_status, $8,
+             case when $6::text = 'payment_pending' then now() + interval '10 minutes' end,
+             case when $6::text = 'confirmed' then now() end, 'Test C.')
      returning id, reference, qr_token`,
     [customer.id, stationId, pointId, start.toISOString(), end.toISOString(), status, paymentStatus, fee],
   );

@@ -251,6 +251,9 @@ begin
   end if;
   select id into v_id from public.refunds where idempotency_key = p_idempotency_key;
   if found then
+    if not exists (select 1 from public.refunds where id = v_id and payment_id = p_payment_id and amount_paise = p_amount) then
+      perform private.raise_error(409, 'idempotency_key_reused', 'This idempotency key was used for a different refund');
+    end if;
     return v_id;
   end if;
   select coalesce(sum(amount_paise), 0) into v_refunded from public.refunds

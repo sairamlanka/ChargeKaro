@@ -575,6 +575,7 @@ begin
   if v_eligible then
     perform private.create_refund_request(p_booking_id, v_b.booking_fee_paise,
       format('Automatic refund under policy: %s cancellation', p_actor), true);
+    select * into v_b from public.bookings where id = p_booking_id;
   end if;
 
   select * into v_s from public.stations where id = v_b.station_id;

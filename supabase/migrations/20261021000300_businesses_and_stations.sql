@@ -394,7 +394,7 @@ stable
 security definer
 set search_path = ''
 as $$
-  select private.business_role(p_business) = 'owner';
+  select coalesce(private.business_role(p_business) = 'owner', false);
 $$;
 
 -- Owner: every permission on every station of the business.

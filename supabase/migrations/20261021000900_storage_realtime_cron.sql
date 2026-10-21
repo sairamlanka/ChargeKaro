@@ -29,41 +29,44 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 on conflict (id) do update
   set public = excluded.public, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
 
+-- Note: policies reference objects.name explicitly. An unqualified "name"
+-- inside the stations subqueries would resolve to stations.name.
+
 -- station-documents: owners / document managers of the business, and reviewers.
 create policy "documents read" on storage.objects for select to authenticated using (
   bucket_id = 'station-documents' and (
-    private.can_manage_documents(private.try_uuid((storage.foldername(name))[1]), private.try_uuid((storage.foldername(name))[2]))
+    private.can_manage_documents(private.try_uuid((storage.foldername(objects.name))[1]), private.try_uuid((storage.foldername(objects.name))[2]))
     or private.has_platform_permission('documents.review')
     or private.has_platform_permission('applications.review')));
 
 create policy "documents upload" on storage.objects for insert to authenticated with check (
   bucket_id = 'station-documents'
-  and private.try_uuid((storage.foldername(name))[1]) is not null
-  and ((storage.foldername(name))[2] = 'business' or private.try_uuid((storage.foldername(name))[2]) is not null)
-  and private.can_manage_documents(private.try_uuid((storage.foldername(name))[1]), private.try_uuid((storage.foldername(name))[2]))
-  and (private.try_uuid((storage.foldername(name))[2]) is null
-       or exists (select 1 from public.stations s where s.id = private.try_uuid((storage.foldername(name))[2])
-                   and s.business_id = private.try_uuid((storage.foldername(name))[1]))));
+  and private.try_uuid((storage.foldername(objects.name))[1]) is not null
+  and ((storage.foldername(objects.name))[2] = 'business' or private.try_uuid((storage.foldername(objects.name))[2]) is not null)
+  and private.can_manage_documents(private.try_uuid((storage.foldername(objects.name))[1]), private.try_uuid((storage.foldername(objects.name))[2]))
+  and (private.try_uuid((storage.foldername(objects.name))[2]) is null
+       or exists (select 1 from public.stations s where s.id = private.try_uuid((storage.foldername(objects.name))[2])
+                   and s.business_id = private.try_uuid((storage.foldername(objects.name))[1]))));
 -- No update/delete policy: uploaded documents are immutable evidence.
 
 -- station-media: public bucket for display images; writes need station.edit.
 create policy "media read" on storage.objects for select to authenticated using (bucket_id = 'station-media');
 create policy "media upload" on storage.objects for insert to authenticated with check (
   bucket_id = 'station-media'
-  and private.has_station_permission(private.try_uuid((storage.foldername(name))[2]), 'station.edit')
-  and exists (select 1 from public.stations s where s.id = private.try_uuid((storage.foldername(name))[2])
-               and s.business_id = private.try_uuid((storage.foldername(name))[1])));
+  and private.has_station_permission(private.try_uuid((storage.foldername(objects.name))[2]), 'station.edit')
+  and exists (select 1 from public.stations s where s.id = private.try_uuid((storage.foldername(objects.name))[2])
+               and s.business_id = private.try_uuid((storage.foldername(objects.name))[1])));
 create policy "media delete" on storage.objects for delete to authenticated using (
   bucket_id = 'station-media'
-  and private.has_station_permission(private.try_uuid((storage.foldername(name))[2]), 'station.edit'));
+  and private.has_station_permission(private.try_uuid((storage.foldername(objects.name))[2]), 'station.edit'));
 
 create policy "maintenance read" on storage.objects for select to authenticated using (
   bucket_id = 'maintenance-photos' and (
-    private.can_view_station(private.try_uuid((storage.foldername(name))[2]))
+    private.can_view_station(private.try_uuid((storage.foldername(objects.name))[2]))
     or private.has_platform_permission('stations.manage')));
 create policy "maintenance upload" on storage.objects for insert to authenticated with check (
   bucket_id = 'maintenance-photos'
-  and private.has_station_permission(private.try_uuid((storage.foldername(name))[2]), 'maintenance.report'));
+  and private.has_station_permission(private.try_uuid((storage.foldername(objects.name))[2]), 'maintenance.report'));
 
 create policy "receipts read" on storage.objects for select to authenticated using (
   bucket_id = 'expense-receipts' and private.has_platform_permission('finance.read'));
