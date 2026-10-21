@@ -31,6 +31,22 @@ abstract final class Fmt {
     return date(t);
   }
 
+  /// "in 25 min", "in 2 h 5 min", or "now" for a future time.
+  static String until(DateTime t, {DateTime? now}) {
+    final d = t.difference(now ?? DateTime.now());
+    if (d.inMinutes < 1) return 'now';
+    if (d.inMinutes < 60) return 'in ${d.inMinutes} min';
+    final m = d.inMinutes % 60;
+    if (d.inHours < 24) return 'in ${d.inHours} h${m == 0 ? '' : ' $m min'}';
+    return 'on ${weekday(t)}';
+  }
+
+  /// Time-of-day greeting in IST.
+  static String greeting({DateTime? now}) {
+    final h = toIst(now ?? DateTime.now()).hour;
+    return h < 12 ? 'Good morning' : (h < 17 ? 'Good afternoon' : 'Good evening');
+  }
+
   static String fileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';

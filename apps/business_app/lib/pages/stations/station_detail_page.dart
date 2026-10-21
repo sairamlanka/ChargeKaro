@@ -29,7 +29,7 @@ class StationDetailPage extends ConsumerWidget {
           actions: [
             if (canEdit) IconButton(tooltip: 'Edit details', icon: const Icon(Icons.edit_outlined), onPressed: () => context.go('/stations/$id/edit')),
           ],
-          bottom: const TabBar(isScrollable: true, tabs: [
+          bottom: const TabBar(isScrollable: true, tabAlignment: TabAlignment.start, tabs: [
             Tab(text: 'Overview'),
             Tab(text: 'Charging points'),
             Tab(text: 'Availability'),
@@ -227,20 +227,47 @@ class _ApplicationCard extends ConsumerWidget {
           Container(
             padding: const EdgeInsets.all(12),
             margin: const EdgeInsets.only(bottom: 8),
-            decoration: BoxDecoration(color: Theme.of(context).colorScheme.secondaryContainer, borderRadius: BorderRadius.circular(8)),
-            child: Text('Reviewer feedback: ${app.latestFeedback}'),
+            decoration: BoxDecoration(color: Theme.of(context).colorScheme.secondaryContainer, borderRadius: BorderRadius.circular(AppTheme.fieldRadius)),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.forum_outlined, size: 20),
+              const SizedBox(width: 10),
+              Expanded(child: Text('Reviewer feedback: ${app.latestFeedback}')),
+            ]),
           ),
         if (app.status.ownerCanSubmit) ...[
-          for (final (label, done) in steps)
-            ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(done ? Icons.check_circle : Icons.radio_button_unchecked, color: done ? Colors.green : null),
-              title: Text(label),
+          Row(children: [
+            Expanded(child: Text(ready ? 'Ready to submit' : 'Finish these steps to go live', style: Theme.of(context).textTheme.titleSmall)),
+            Text('${steps.where((s) => s.$2).length} of ${steps.length}', style: Theme.of(context).textTheme.labelLarge),
+          ]),
+          const SizedBox(height: 10),
+          GradientProgressBar(value: steps.where((s) => s.$2).length / steps.length, semanticsLabel: 'Onboarding progress'),
+          const SizedBox(height: 8),
+          for (final (i, (label, done)) in steps.indexed)
+            Entrance(
+              index: i,
+              child: ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: AnimatedSwitcher(
+                  duration: Motion.medium,
+                  transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
+                  child: done
+                      ? Icon(Icons.check_circle_rounded, key: const ValueKey(true), color: Theme.of(context).colorScheme.primary)
+                      : Icon(Icons.radio_button_unchecked_rounded, key: const ValueKey(false), color: Theme.of(context).colorScheme.outline),
+                ),
+                title: Text(
+                  label,
+                  style: TextStyle(
+                    decoration: done ? TextDecoration.lineThrough : null,
+                    color: done ? Theme.of(context).colorScheme.onSurfaceVariant : null,
+                  ),
+                ),
+              ),
             ),
           const SizedBox(height: 8),
           if (canSubmit)
-            FilledButton(
+            GradientButton(
+              icon: Icons.send_rounded,
               onPressed: !ready || !app.canResubmit
                   ? null
                   : () async {
@@ -253,11 +280,17 @@ class _ApplicationCard extends ConsumerWidget {
                         onChanged();
                       }
                     },
-              child: Text(app.status == ApplicationStatus.draft ? 'Submit for review' : 'Resubmit'),
+              label: app.status == ApplicationStatus.draft ? 'Submit for review' : 'Resubmit',
             ),
           if (app.status == ApplicationStatus.rejected && !app.resubmissionAllowed) const Text('This application cannot be resubmitted.'),
         ] else if (app.status.awaitingReview)
-          const Text('Submitted. A ChargeKaro reviewer will check your documents and location. You can still add charging points.'),
+          Row(children: [
+            const PulseDot(size: 9),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('In review. A ChargeKaro reviewer is checking your documents and location. You can still add charging points.'),
+            ),
+          ]),
       ]),
     );
   }

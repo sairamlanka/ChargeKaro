@@ -35,59 +35,107 @@ class _Body extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = Theme.of(context);
     Widget grid(List<Widget> tiles) => LayoutBuilder(builder: (context, c) {
           final cols = (c.maxWidth / 220).floor().clamp(1, 6);
-          final w = (c.maxWidth - (cols - 1) * 12) / cols;
-          return Wrap(spacing: 12, runSpacing: 12, children: [for (final t in tiles) SizedBox(width: w, child: t)]);
+          final w = (c.maxWidth - (cols - 1) * 14) / cols;
+          return Wrap(spacing: 14, runSpacing: 14, children: [
+            for (final (i, tile) in tiles.indexed) SizedBox(width: w, child: Entrance(index: i, child: tile)),
+          ]);
         });
-    Widget section(String title, List<Widget> tiles, {Widget? action}) => Padding(
-          padding: const EdgeInsets.only(bottom: 24),
+    Widget section(String title, IconData icon, Color color, List<Widget> tiles, {Widget? action}) => Padding(
+          padding: const EdgeInsets.only(bottom: 28),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)), ?action]),
-            const SizedBox(height: 8),
+            Row(children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 8),
+              Expanded(child: Text(title, style: t.textTheme.titleLarge)),
+              ?action,
+            ]),
+            const SizedBox(height: 12),
             grid(tiles),
           ]),
         );
-    String n(String g, String k) => '${m.metric(g, k)}';
+    int n(String g, String k) => m.metric(g, k);
+    String money(num paise) => Money(paise.round()).format();
     final finance = m.finance == null ? null : FinancialSummary.fromJson(m.finance);
+    const violet = Color(0xFF7C3AED);
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      section('Onboarding', [
-        MetricTile(label: 'Awaiting review', value: n('applications', 'pending'), icon: Icons.assignment_late_outlined),
-        MetricTile(label: 'Waiting on business', value: n('applications', 'awaiting_business'), icon: Icons.hourglass_empty),
-        MetricTile(label: 'Approved (all time)', value: n('applications', 'approved'), icon: Icons.verified_outlined),
-        MetricTile(label: 'Rejected (all time)', value: n('applications', 'rejected'), icon: Icons.block),
+      Entrance(
+        child: HeroHeader(
+          eyebrow: Fmt.greeting(),
+          title: 'Here\'s your network today',
+          subtitle: n('applications', 'pending') == 0
+              ? 'No applications are waiting for review.'
+              : '${n('applications', 'pending')} application${n('applications', 'pending') == 1 ? '' : 's'} waiting for review.',
+          trailing: n('applications', 'pending') > 0
+              ? FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Brand.greenDeep),
+                  onPressed: () => context.go('/applications'),
+                  icon: const Icon(Icons.rate_review_rounded),
+                  label: const Text('Review now'),
+                )
+              : null,
+          child: LayoutBuilder(builder: (context, c) {
+            final stats = [
+              HeroStat(label: 'Active stations', count: n('stations', 'active'), icon: Icons.ev_station_rounded),
+              HeroStat(label: 'Charging points', count: n('charging_points', 'total'), icon: Icons.electrical_services_rounded),
+              HeroStat(label: 'Bookings in range', count: n('bookings', 'in_range_total'), icon: Icons.event_available_rounded),
+              HeroStat(label: 'Businesses', count: n('businesses', 'total'), icon: Icons.storefront_rounded),
+            ];
+            final cols = c.maxWidth > 700 ? 4 : 2;
+            final w = (c.maxWidth - (cols - 1) * 10) / cols;
+            return Wrap(spacing: 10, runSpacing: 10, children: [for (final s in stats) SizedBox(width: w, child: s)]);
+          }),
+        ),
+      ),
+      const SizedBox(height: 28),
+      section('Onboarding', Icons.assignment_rounded, Brand.ocean, [
+        MetricTile(label: 'Awaiting review', count: n('applications', 'pending'), icon: Icons.assignment_late_rounded, accent: Brand.ocean, onTap: () => context.go('/applications')),
+        MetricTile(label: 'Waiting on business', count: n('applications', 'awaiting_business'), icon: Icons.hourglass_top_rounded, accent: Brand.amber),
+        MetricTile(label: 'Approved (all time)', count: n('applications', 'approved'), icon: Icons.verified_rounded, accent: Brand.green),
+        MetricTile(label: 'Rejected (all time)', count: n('applications', 'rejected'), icon: Icons.block_rounded, accent: t.colorScheme.error),
       ], action: TextButton(onPressed: () => context.go('/applications'), child: const Text('Open queue'))),
-      section('Network', [
-        MetricTile(label: 'Businesses', value: n('businesses', 'total'), caption: '${n('businesses', 'demo')} demo'),
-        MetricTile(label: 'Active stations', value: n('stations', 'active'), caption: 'of ${n('stations', 'total')} approved'),
-        MetricTile(label: 'Suspended stations', value: n('stations', 'suspended')),
-        MetricTile(label: 'Temporarily closed', value: n('stations', 'temporarily_closed')),
+      section('Network', Icons.hub_rounded, Brand.green, [
+        MetricTile(label: 'Businesses', count: n('businesses', 'total'), caption: '${n('businesses', 'demo')} demo', icon: Icons.storefront_rounded, accent: violet),
+        MetricTile(label: 'Active stations', count: n('stations', 'active'), caption: 'of ${n('stations', 'total')} approved', icon: Icons.ev_station_rounded, accent: Brand.green),
+        MetricTile(label: 'Suspended stations', count: n('stations', 'suspended'), icon: Icons.pause_circle_rounded, accent: t.colorScheme.error),
+        MetricTile(label: 'Temporarily closed', count: n('stations', 'temporarily_closed'), icon: Icons.door_front_door_rounded, accent: Brand.amber),
         MetricTile(
           label: 'Charging points',
-          value: n('charging_points', 'total'),
+          count: n('charging_points', 'total'),
           caption: '${n('charging_points', 'maintenance')} in maintenance · status is staff-reported',
+          icon: Icons.electrical_services_rounded,
+          accent: Brand.ocean,
         ),
       ]),
-      section('Bookings in range', [
-        MetricTile(label: 'Bookings', value: n('bookings', 'in_range_total')),
-        MetricTile(label: 'Completed', value: n('bookings', 'completed')),
-        MetricTile(label: 'Cancelled', value: n('bookings', 'cancelled')),
-        MetricTile(label: 'No-shows', value: n('bookings', 'no_show')),
-        MetricTile(label: 'Expired unpaid', value: n('bookings', 'expired_unpaid')),
-        MetricTile(label: 'Upcoming confirmed', value: n('bookings', 'upcoming')),
+      section('Bookings in range', Icons.event_note_rounded, violet, [
+        MetricTile(label: 'Bookings', count: n('bookings', 'in_range_total'), icon: Icons.event_rounded, accent: violet),
+        MetricTile(label: 'Completed', count: n('bookings', 'completed'), icon: Icons.task_alt_rounded, accent: Brand.green),
+        MetricTile(label: 'Cancelled', count: n('bookings', 'cancelled'), icon: Icons.event_busy_rounded, accent: t.colorScheme.error),
+        MetricTile(label: 'No-shows', count: n('bookings', 'no_show'), icon: Icons.person_off_rounded, accent: Brand.amber),
+        MetricTile(label: 'Expired unpaid', count: n('bookings', 'expired_unpaid'), icon: Icons.timer_off_rounded, accent: t.colorScheme.outline),
+        MetricTile(label: 'Upcoming confirmed', count: n('bookings', 'upcoming'), icon: Icons.upcoming_rounded, accent: Brand.ocean),
       ]),
       if (finance != null)
-        section('Booking-fee finance in range', [
-          MetricTile(label: 'Gross collections', value: finance.gross.format(), caption: '${finance.successfulPayments} payments'),
-          MetricTile(label: 'Refunds', value: finance.refunds.format(), caption: '${finance.refundCount} refunds'),
-          MetricTile(label: 'Net revenue', value: finance.netRevenue.format(), caption: 'after refunds and gateway fees'),
-          MetricTile(label: 'Estimated operating profit', value: finance.estimatedProfit.format(), caption: 'net revenue − approved expenses'),
+        section('Booking-fee finance in range', Icons.account_balance_rounded, Brand.amber, [
+          MetricTile(label: 'Gross collections', count: finance.gross.paise, format: money, caption: '${finance.successfulPayments} payments', icon: Icons.payments_rounded, accent: Brand.green),
+          MetricTile(label: 'Refunds', count: finance.refunds.paise, format: money, caption: '${finance.refundCount} refunds', icon: Icons.undo_rounded, accent: Brand.amber),
+          MetricTile(label: 'Net revenue', count: finance.netRevenue.paise, format: money, caption: 'after refunds and gateway fees', icon: Icons.account_balance_wallet_rounded, accent: Brand.ocean),
+          MetricTile(
+            label: 'Estimated operating profit',
+            count: finance.estimatedProfit.paise,
+            format: money,
+            caption: 'net revenue − approved expenses',
+            icon: Icons.trending_up_rounded,
+            accent: violet,
+          ),
         ], action: TextButton(onPressed: () => context.go('/finance'), child: const Text('Finance details'))),
-      if (m.financeFilteredNote != null) Text(m.financeFilteredNote!, style: Theme.of(context).textTheme.bodySmall),
+      if (m.financeFilteredNote != null) Text(m.financeFilteredNote!, style: t.textTheme.bodySmall),
       Text(
         'Charging fees are paid directly to stations and are not part of these figures.',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
       ),
     ]);
   }
