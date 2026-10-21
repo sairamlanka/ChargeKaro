@@ -58,7 +58,7 @@ class BookingRepository extends Repository {
         await rpc<Object?>('check_in_booking', {'p_station_id': stationId, 'p_code': code, 'p_method': viaQr ? 'qr' : 'reference'}),
       );
 
-  /// charging, completed or no_show; the database validates the transition.
+  /// arrived, in_progress, completed or no_show; the database validates the transition.
   Future<Booking> updateProgress(String bookingId, BookingStatus status) async =>
       Booking.fromJson(await rpc<Object?>('update_booking_progress', {'p_booking_id': bookingId, 'p_status': status.wire}));
 
