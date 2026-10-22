@@ -54,12 +54,30 @@ allowed.
 `claim_refunds`, `record_refund_result`, `claim_push_notifications`,
 `complete_push_notification`, `run_booking_jobs`, `run_compliance_jobs`.
 
-## Retailer App contract (future)
+## Retailer App contract
 
-The customer flow is already implemented server-side and covered by tests:
-browse active stations and points (signed-in read under RLS; `anon` has no
-table access), `get_point_busy_periods`
-for availability (time ranges only, no customer data), `create_booking_hold`
-with an idempotency key, `payments-create-order` → Razorpay Checkout →
-`payments-verify`, `get_my_booking_qr`, and `cancel_booking`. See
-`apps/retailer_app/README.md`.
+Guests (`anon`) can call the read-only discovery RPCs; everything else needs
+a signed-in customer (phone OTP). All errors come back as
+`{code, message}` from `private.raise_error`.
+
+| Call | Who | Purpose |
+| --- | --- | --- |
+| `search_stations(p_latitude, p_longitude, p_radius_km)` | anon | Public stations in range with distance, status and next free slot |
+| `search_areas(p_query)` | anon | Area/station name matches from the database |
+| `geocode-area` (function) | anon | Area name to coordinates (Google Geocoding, server key) |
+| `get_public_station(p_station_id)` | anon | Details, points, hours, closures |
+| `get_station_slots(p_station_id, p_date)` | anon | Slot grid with a state per cell; no customer data |
+| `get_booking_terms()` | anon | Fee, hold length, refund policy text, terms/privacy versions, `app_status` |
+| `check_slot_availability(...)` | anon | Re-check slot and fee before holding |
+| `create_booking_hold(..., p_idempotency_key)` | customer | Hold (or confirm when the fee is 0) |
+| `payments-create-order`, `payments-verify` (functions) | customer | Razorpay order and signature check |
+| `get_my_bookings`, `get_my_booking`, `get_my_booking_qr` | customer | Own bookings only |
+| `preview_cancellation`, `cancel_booking` | customer | Refund eligibility, then cancel |
+| `resend_booking_email` | customer | Queue the receipt email again |
+| `customer_consents` (insert) | customer | Terms, privacy and marketing consent with versions |
+| `submit_customer_report` | anon | Report wrong station information |
+| `get_account_deletion_check`, `request_account_deletion` | customer | Blockers, then a deletion request |
+
+`get_booking_terms().app_status` is the `retail_app_status` platform setting,
+`{"min_build": int, "maintenance": bool, "message": text}`, or null.
+See `apps/retailer_app/README.md` for the screen flow.

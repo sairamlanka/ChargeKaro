@@ -690,7 +690,10 @@ as $$
       'policy_confirmed', (private.setting('refund_policy') ->> 'policy_confirmed_for_production')::boolean
     ),
     'terms_version', private.current_terms_version(),
-    'privacy_version', private.current_terms_version()
+    'privacy_version', private.current_terms_version(),
+    -- Optional platform setting {"min_build": int, "maintenance": bool, "message": text}
+    -- that lets the platform require an app update or show a maintenance notice.
+    'app_status', private.setting('retail_app_status')
   );
 $$;
 

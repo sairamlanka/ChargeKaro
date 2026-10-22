@@ -34,8 +34,14 @@ Last updated 2026-10-21. Legend:
 | Business App | Maintenance, team, reports, notifications, account | Done | |
 | Business App | Google Maps picker | Needs credentials | Falls back to lat/lng fields without a key |
 | Business App | Android / iOS builds | Planned | Not built here (no Android SDK / Xcode); signing config ready |
-| Retailer App | Backend contract | Done | Customer flow tested in DB/Edge Function tests |
-| Retailer App | App | Planned | Out of scope for this phase |
+| Retailer App | Backend | Done | Discovery, slot grid, bookings, consents, reports, message outbox; DB and Edge Function tests |
+| Retailer App | Discovery, slots, booking, payment, My Bookings, cancellation, profile, account deletion | Done | Widget tests on a mocked backend; web build screenshotted against a local fake backend, not yet against Supabase |
+| Retailer App | English + Telugu | Done | Telugu strings machine-quality; have a native speaker review before launch |
+| Retailer App | Phone OTP, SMS and email confirmations | Needs credentials | SMS provider in Supabase Auth; Twilio and Resend secrets for `dispatch-customer-messages` |
+| Retailer App | Area search | Needs credentials | `GOOGLE_MAPS_SERVER_KEY` for `geocode-area`; without it only station/area names in the database match |
+| Retailer App | WhatsApp confirmations | Planned | Channel reserved in the outbox; no sender yet |
+| Retailer App | Booking-fee refund policy | Placeholder | Server policy drives the app; owner decision pending |
+| Retailer App | Android / iOS builds | Planned | Not built here; ids `in.chargekaro.app` |
 | Quality | CI (DB, Deno, Flutter analyze/test/build, PostgREST integration) | Done (not yet run on GitHub) | Needs a GitHub repository |
 | Docs | Architecture, setup, schema, API, security, finance, deployment, testing | Done | |
 | Compliance | Regulatory compliance claims | Not claimed | Document review is a record, not certification |
@@ -48,3 +54,6 @@ Last updated 2026-10-21. Legend:
 4. A Google Maps API key restricted to the app ids.
 5. A Firebase project (Android/iOS config files, service account for push).
 6. A decision on the booking-fee refund policy.
+7. For the customer app: an SMS provider for OTP (Supabase Auth), Twilio and
+   Resend accounts for confirmations, a server-side Google Maps key for area
+   search, a map tile provider, and support email/phone.

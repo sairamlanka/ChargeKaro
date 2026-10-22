@@ -21,6 +21,12 @@ Auth settings:
 * Email confirmations on; site URL = Admin Panel URL.
 * Redirect URLs: Admin Panel origin and `in.chargekaro.business://auth-callback`.
 * Consider enabling MFA for platform staff.
+* Customer app: enable the Phone provider with an SMS provider (Twilio,
+  MessageBird, Vonage or Textlocal), keep phone sign-ups on, and set the OTP
+  rate limits. Add the customer web origin to the redirect URLs.
+* Optional: set the `retail_app_status` platform setting to
+  `{"min_build": 2, "maintenance": false, "message": null}` to force updates or
+  show a maintenance notice in the customer app.
 
 ## 2. First super admin
 
@@ -43,9 +49,13 @@ supabase secrets set \
   RAZORPAY_WEBHOOK_SECRET=... \
   CRON_SECRET=$(openssl rand -hex 32) \
   FCM_SERVICE_ACCOUNT_JSON="$(cat service-account.json)" \
-  CORS_ALLOWED_ORIGIN=https://book.example.com
+  CORS_ALLOWED_ORIGIN=https://book.example.com \
+  GOOGLE_MAPS_SERVER_KEY=... \
+  TWILIO_ACCOUNT_SID=... TWILIO_AUTH_TOKEN=... TWILIO_FROM_NUMBER=+91... \
+  RESEND_API_KEY=... EMAIL_FROM="ChargeKaro <bookings@example.com>"
 
-supabase functions deploy payments-create-order payments-verify razorpay-webhook process-refunds dispatch-notifications
+supabase functions deploy payments-create-order payments-verify razorpay-webhook \
+  process-refunds dispatch-notifications geocode-area dispatch-customer-messages
 ```
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are
@@ -63,6 +73,14 @@ select vault.create_secret('<same CRON_SECRET>', 'cron_secret');
 select cron.schedule('chargekaro-dispatch-notifications', '* * * * *', $$
   select net.http_post(
     url := 'https://<project-ref>.supabase.co/functions/v1/dispatch-notifications',
+    headers := jsonb_build_object('x-cron-secret',
+      (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
+    body := '{}'::jsonb);
+$$);
+
+select cron.schedule('chargekaro-dispatch-customer-messages', '* * * * *', $$
+  select net.http_post(
+    url := 'https://<project-ref>.supabase.co/functions/v1/dispatch-customer-messages',
     headers := jsonb_build_object('x-cron-secret',
       (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
     body := '{}'::jsonb);
@@ -97,12 +115,25 @@ flutter build web --release --dart-define-from-file=../../env/production.json
 Host `build/web` on any static host (Firebase Hosting, Netlify, Cloudflare
 Pages, S3+CloudFront) with an SPA fallback to `index.html` and HTTPS.
 
-## 7. Business App
+## 7. Customer app (Flutter)
+
+```bash
+cd apps/retailer_app
+flutter build web --release --dart-define-from-file=../../env/production.json \
+  --dart-define=APP_BUILD=1 --dart-define=SUPPORT_EMAIL=help@example.com \
+  --dart-define=SUPPORT_PHONE=+91... --dart-define=MAP_TILE_URL=https://...
+```
+
+Host `build/web` like the Admin Panel and set `CORS_ALLOWED_ORIGIN` to its
+origin. Android (`in.chargekaro.app`) and iOS builds follow setup.md; the app
+needs location permission only for "Use my current location".
+
+## 8. Business App
 
 See setup.md §5–7 for Maps, Firebase and signing. Then build an App Bundle
 for Play Console and an archive from Xcode for App Store Connect.
 
-## 8. FCM token note
+## 9. FCM token note
 
 The Business App registers the FCM registration token (`getToken`) because
 the `dispatch-notifications` function sends through the FCM HTTP v1 API, which
