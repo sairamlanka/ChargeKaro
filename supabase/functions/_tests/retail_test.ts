@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertRejects, assertStringIncludes } from 'jsr:@std/assert@1.0.13';
 import { type ClaimedMessage, dispatchCustomerMessages, type MessageSender, PermanentSendError, renderMessage, sendersFromEnv } from '../_shared/messaging.ts';
-import { geocodeArea } from '../_shared/geocode.ts';
+import { geocodeArea, PlaceCache } from '../_shared/geocode.ts';
 import { HttpError } from '../_shared/http.ts';
 import type { Db } from '../_shared/db.ts';
 
@@ -86,22 +86,52 @@ Deno.test('senders are built only from complete provider secrets', () => {
   assertEquals(sendersFromEnv((n) => env[n]).map((s) => s.channel), ['email']);
 });
 
-Deno.test('geocoding validates input, reports missing key, and maps provider results', async () => {
-  await assertRejects(() => geocodeArea('a', 'k'), HttpError, 'Type 2 to 120 characters');
-  const e = await assertRejects(() => geocodeArea('Gachibowli', undefined), HttpError);
-  assertEquals((e as HttpError).code, 'geocoding_not_configured');
+Deno.test('place search validates input and maps OpenStreetMap results inside India', async () => {
+  await assertRejects(() => geocodeArea('a'), HttpError, 'Type 2 to 120 characters');
   let requested = '';
-  const fake = (u: string) => {
+  let agent = '';
+  const fake = (u: string, init?: RequestInit) => {
     requested = u;
+    agent = new Headers(init?.headers).get('User-Agent') ?? '';
     return Promise.resolve(new Response(JSON.stringify({
-      status: 'OK',
-      results: [{ formatted_address: 'Gachibowli, Hyderabad, Telangana, India', geometry: { location: { lat: 17.44, lng: 78.35 }, location_type: 'APPROXIMATE' } }],
+      type: 'FeatureCollection',
+      features: [
+        { geometry: { coordinates: [78.35, 17.44] }, properties: { name: 'Gachibowli', city: 'Hyderabad', state: 'Telangana', postcode: '500032', countrycode: 'IN', type: 'district' } },
+        { geometry: { coordinates: [78.35, 17.44] }, properties: { name: 'Gachibowli', city: 'Hyderabad', state: 'Telangana', postcode: '500032', countrycode: 'IN', type: 'district' } },
+        { geometry: { coordinates: [78.36, 17.45] }, properties: { housenumber: '12', street: 'Old Mumbai Highway', city: 'Hyderabad', countrycode: 'IN', type: 'house' } },
+        { geometry: { coordinates: [90.4, 23.8] }, properties: { name: 'Gachibowli Lane', countrycode: 'BD' } },
+        { geometry: { coordinates: ['x', 17] }, properties: { name: 'Broken' } },
+      ],
     })));
   };
-  const r = await geocodeArea('Gachibowli', 'key123', fake);
-  assertStringIncludes(requested, 'components=country%3AIN');
-  assertEquals(r.results, [{ label: 'Gachibowli', secondary: 'Hyderabad, Telangana, India', latitude: 17.44, longitude: 78.35, source: 'google', precise: false }]);
-  const none = await geocodeArea('zzzz', 'k', () => Promise.resolve(new Response(JSON.stringify({ status: 'ZERO_RESULTS', results: [] }))));
+  const r = await geocodeArea('Gachibowli', 'https://geo.example', fake, { latitude: 17.4, longitude: 78.4 });
+  assertStringIncludes(requested, 'https://geo.example/api/?q=Gachibowli');
+  assertStringIncludes(requested, 'bbox=68.0%2C6.0%2C97.5%2C37.6');
+  assertStringIncludes(requested, 'lat=17.4&lon=78.4');
+  assertStringIncludes(agent, 'ChargeKaro');
+  assertEquals(r.results, [
+    { label: 'Gachibowli', secondary: 'Hyderabad, Telangana, 500032', latitude: 17.44, longitude: 78.35, source: 'osm', precise: false },
+    { label: '12 Old Mumbai Highway', secondary: 'Hyderabad', latitude: 17.45, longitude: 78.36, source: 'osm', precise: true },
+  ]);
+  const none = await geocodeArea('zzzz', undefined, () => Promise.resolve(new Response(JSON.stringify({ features: [] }))));
   assertEquals(none.results, []);
-  await assertRejects(() => geocodeArea('x y', 'k', () => Promise.resolve(new Response('{}', { status: 500 }))), HttpError);
+  await assertRejects(() => geocodeArea('x y', undefined, () => Promise.resolve(new Response('{}', { status: 500 }))), HttpError);
+  await assertRejects(() => geocodeArea('x y', undefined, () => Promise.reject(new Error('offline'))), HttpError, 'Place search is temporarily unavailable');
+});
+
+Deno.test('place answers are cached by query and nearby area, expire, and drop the oldest', () => {
+  let now = 0;
+  const cache = new PlaceCache(2, 1000, () => now);
+  const one = { results: [] };
+  assertEquals(PlaceCache.key(' Gachi ', { latitude: 17.441, longitude: 78.349 }), PlaceCache.key('gachi', { latitude: 17.44, longitude: 78.35 }));
+  assert(PlaceCache.key('gachi') !== PlaceCache.key('gachi', { latitude: 17.44, longitude: 78.35 }));
+  cache.set('a', one);
+  assertEquals(cache.get('a'), one);
+  now = 1001;
+  assertEquals(cache.get('a'), undefined);
+  cache.set('a', one);
+  cache.set('b', one);
+  cache.set('c', one);
+  assertEquals(cache.get('a'), undefined);
+  assertEquals(cache.get('c'), one);
 });

@@ -43,6 +43,24 @@ retries and duplicate webhooks cannot double-count.
 "Estimated" because taxes on income, depreciation and anything not recorded as
 an expense are not included. Periods use IST calendar days.
 
+## Admin Panel → Finance
+
+| Tab | What it shows |
+|---|---|
+| Overview | Fees collected, refunds, gateway fees, net revenue, expenses and estimated profit for the selected range; revenue vs expenses chart (daily / weekly / monthly); profit and loss statement; top stations; expenses by category |
+| Booking revenue | Revenue per station (`get_revenue_by_station`) and every booking that paid a fee in the range (`get_booking_revenue`): customer, booking ID, station, slot, amount collected, refunded and gateway fee. Search, station filter, CSV export |
+| Expenses | Record, edit (while awaiting approval), approve, reject and void expenses; filter by status and category; manage categories (`save_expense_category`: add, rename, archive); CSV export |
+| Reports | Profit over time (per period or running total), revenue vs expenses, P&L table with totals, P&L CSV export |
+| Payments / Refunds | Raw gateway records |
+
+Per-booking and per-station figures are read from the same ledger as the
+summary, so for any range they add up to the summary totals (covered by
+`supabase/tests/finance_reports.test.mjs`). A booking appears in a range when
+it has ledger money in that range (a fee captured, a refund processed or a
+gateway fee posted). Categories are never deleted, only archived, because
+expenses refer to them; changes are audited. Category changes need
+`finance.expenses.approve` or `settings.manage`.
+
 ## Expenses
 
 Expenses are recorded by staff with `finance.expenses.write`, can carry receipt

@@ -17,8 +17,7 @@ class BookingDraft {
     required this.stationAddress,
     required this.latitude,
     required this.longitude,
-    required this.pointId,
-    required this.pointLabel,
+    required this.connector,
     required this.connectorLabel,
     required this.start,
     required this.end,
@@ -40,8 +39,7 @@ class BookingDraft {
         stationAddress: j['station_address'] as String? ?? '',
         latitude: (j['lat'] as num?)?.toDouble() ?? 0,
         longitude: (j['lng'] as num?)?.toDouble() ?? 0,
-        pointId: j['point_id'] as String,
-        pointLabel: j['point_label'] as String? ?? '',
+        connector: j['connector'] as String?,
         connectorLabel: j['connector_label'] as String? ?? '',
         start: DateTime.parse(j['start'] as String).toUtc(),
         end: DateTime.parse(j['end'] as String).toUtc(),
@@ -62,8 +60,9 @@ class BookingDraft {
   final String stationAddress;
   final double latitude;
   final double longitude;
-  final String pointId;
-  final String pointLabel;
+  /// Connector the customer needs (wire value), or null for any. The
+  /// charging point itself is assigned by the server when the hold is made.
+  final String? connector;
   final String connectorLabel;
   final DateTime start;
   final DateTime end;
@@ -93,8 +92,7 @@ class BookingDraft {
         'station_address': stationAddress,
         'lat': latitude,
         'lng': longitude,
-        'point_id': pointId,
-        'point_label': pointLabel,
+        'connector': connector,
         'connector_label': connectorLabel,
         'start': start.toIso8601String(),
         'end': end.toIso8601String(),
@@ -127,8 +125,7 @@ class BookingDraft {
         stationAddress: stationAddress,
         latitude: latitude,
         longitude: longitude,
-        pointId: pointId,
-        pointLabel: pointLabel,
+        connector: connector,
         connectorLabel: connectorLabel,
         start: start,
         end: end,
@@ -158,6 +155,11 @@ class BookingFlowController extends Notifier<BookingDraft?> {
     final raw = ref.read(localStoreProvider).draft();
     if (raw == null) return null;
     try {
+      // Drafts from before station-level booking named a point; start over.
+      if (raw.containsKey('point_id')) {
+        unawaited(ref.read(localStoreProvider).saveDraft(null));
+        return null;
+      }
       final d = BookingDraft.fromJson(raw);
       final now = DateTime.now();
       // A draft without a hold is only useful while its slot is ahead.
@@ -188,8 +190,7 @@ class BookingFlowController extends Notifier<BookingDraft?> {
     required String stationAddress,
     required double latitude,
     required double longitude,
-    required String pointId,
-    required String pointLabel,
+    required String? connector,
     required String connectorLabel,
     required DateTime start,
     required DateTime end,
@@ -202,8 +203,7 @@ class BookingFlowController extends Notifier<BookingDraft?> {
       stationAddress: stationAddress,
       latitude: latitude,
       longitude: longitude,
-      pointId: pointId,
-      pointLabel: pointLabel,
+      connector: connector,
       connectorLabel: connectorLabel,
       start: start.toUtc(),
       end: end.toUtc(),

@@ -26,7 +26,7 @@ final alternativesProvider = FutureProvider.autoDispose.family<List<StationSumma
     }
   }
   if (lat == null || lng == null) {
-    final o = ref.read(searchProvider).origin;
+    final o = ref.read(searchProvider).anchor;
     lat = o?.latitude;
     lng = o?.longitude;
   }
@@ -59,7 +59,7 @@ class AlternativesScreen extends ConsumerWidget {
                 title: l(K.noAlternativesTitle),
                 message: l(K.noAlternativesBody),
                 actions: [
-                  FallbackAction(l(K.searchAnotherArea), () => context.push('/area-search'), icon: Icons.search_rounded, primary: true),
+                  FallbackAction(l(K.searchByRoute), () => context.push('/route-search'), icon: Icons.alt_route_rounded, primary: true),
                   FallbackAction(l(K.backToExplore), () => context.go('/'), icon: Icons.explore_outlined),
                 ],
               )
@@ -73,7 +73,7 @@ class AlternativesScreen extends ConsumerWidget {
                   for (final (i, s) in list.indexed)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: Entrance(index: i, child: StationCard(station: s, onOpen: () => context.push('/station/${s.id}'))),
+                      child: Entrance(index: i, child: StationCard(station: s, onOpen: () => context.push(slotsRoute(s)))),
                     ),
                 ]),
               ),

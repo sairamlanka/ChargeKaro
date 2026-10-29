@@ -36,7 +36,8 @@ void main() {
     test('arrival window follows the station policy', () {
       final b = CustomerBooking.fromJson(bookingJson(start: DateTime.utc(2026, 10, 22, 10)));
       expect(b.arrivalOpensAt, DateTime.utc(2026, 10, 22, 9, 45));
-      expect(b.arrivalClosesAt, DateTime.utc(2026, 10, 22, 10, 15));
+      expect(b.arrivalClosesAt, DateTime.utc(2026, 10, 22, 10, 5));
+      expect(b.reportBy, DateTime.utc(2026, 10, 22, 9, 55));
     });
   });
 
@@ -48,6 +49,68 @@ void main() {
     expect(p.fits(from, 90, 30), isFalse);
     expect(p.fits(from.add(const Duration(minutes: 90)), 60, 30), isFalse);
     expect(p.fits(from.add(const Duration(minutes: 60)), 30, 30), isFalse);
+  });
+
+  group('station as one grid', () {
+    final from = DateTime.utc(2026, 10, 23, 3, 30); // 9:00 IST
+    const a = 'available', x = 'booked';
+
+    test('three points take three cars; a fourth sees Full', () {
+      // At 9:00 two points are booked, one is free.
+      final grid = SlotGrid.fromJson(gridJson(from, const [], slot: 15, points: [
+        [x, x, a, a],
+        [x, x, a, a],
+        [a, a, a, a],
+      ]));
+      final cells = grid.stationCells(30);
+      expect(cells.first.free, 1);
+      expect(cells.first.total, 3);
+      expect(cells.first.canBook, isTrue);
+      final full = SlotGrid.fromJson(gridJson(from, const [], slot: 15, points: [
+        [x, x, a, a],
+        [x, x, a, a],
+        [x, x, a, a],
+      ])).stationCells(30);
+      expect(full.first.canBook, isFalse);
+      expect(full.first.full, isTrue);
+      expect(full[2].free, 3);
+    });
+
+    test('a 45-minute and a 30-minute booking need different free runs', () {
+      // P1 free 9:00-9:45, P2 free 9:00-9:30 only.
+      final grid = SlotGrid.fromJson(gridJson(from, const [], slot: 15, points: [
+        [a, a, a, x],
+        [a, a, x, x],
+      ]));
+      expect(grid.stationCells(30).first.free, 2);
+      expect(grid.stationCells(45).first.free, 1);
+      expect(grid.stationCells(60).first.free, 0);
+      // Free to start, just not for an hour: "shorter only", not "Full".
+      expect(grid.stationCells(60).first.full, isFalse);
+      expect(grid.stationCells(60).first.tooLong, isTrue);
+    });
+
+    test('a length that runs past the last cell of the day is "shorter only"', () {
+      final grid = SlotGrid.fromJson(gridJson(from, const [], slot: 15, points: [
+        [a, a, a, a],
+      ]));
+      final cells = grid.stationCells(30);
+      expect(cells[2].canBook, isTrue);
+      expect(cells[3].canBook, isFalse);
+      expect(cells[3].tooLong, isTrue);
+      expect(cells[3].full, isFalse);
+    });
+
+    test('the connector choice narrows the points', () {
+      final grid = SlotGrid.fromJson(gridJson(from, const [], slot: 15, connectors: ['ccs2', 'type2_ac'], points: [
+        [x, x, a, a],
+        [a, a, a, a],
+      ]));
+      expect(grid.connectorTypes.map((c) => c.wire), containsAll(['ccs2', 'type2_ac']));
+      expect(grid.stationCells(30).first.free, 1);
+      expect(grid.stationCells(30, connector: 'ccs2').first.canBook, isFalse);
+      expect(grid.stationCells(30, connector: 'type2_ac').first.free, 1);
+    });
   });
 
   test('station parsing is lenient and keeps the uniform fee', () {
@@ -73,8 +136,7 @@ void main() {
       stationAddress: 'Road',
       latitude: 17,
       longitude: 78,
-      pointId: 'p1',
-      pointLabel: 'A1',
+      connector: 'ccs2',
       connectorLabel: 'CCS2',
       start: DateTime.utc(2026, 10, 23, 5),
       end: DateTime.utc(2026, 10, 23, 6),
@@ -86,6 +148,7 @@ void main() {
     );
     final back = BookingDraft.fromJson(d.toJson());
     expect(back.idempotencyKey, d.idempotencyKey);
+    expect(back.connector, 'ccs2');
     expect(back.start, d.start);
     expect(back.hasContact, isTrue);
     expect(newIdempotencyKey(), isNot(newIdempotencyKey()));

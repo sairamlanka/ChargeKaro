@@ -106,31 +106,47 @@ Map<String, Object?> stationJson({String id = 'st1', bool bookable = true}) => {
       'payment_hold_minutes': 10,
     };
 
-/// A grid for one point: cells every 30 minutes from [from], with the given
-/// states in order.
-Map<String, Object?> gridJson(DateTime from, List<String> states, {String stationId = 'st1'}) => {
-      'station_id': stationId,
-      'date': '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}',
-      'slot_minutes': 30,
-      'min_booking_minutes': 30,
-      'buffer_minutes': 0,
-      'booking_fee_paise': 1200,
-      'generated_at': DateTime.now().toUtc().toIso8601String(),
-      'points': [
+/// A grid with cells every [slot] minutes from [from]. [states] is one
+/// point's states in order; [points] gives several points (codes P1, P2...),
+/// each with its own connector from [connectors].
+Map<String, Object?> gridJson(
+  DateTime from,
+  List<String> states, {
+  String stationId = 'st1',
+  List<List<String>>? points,
+  List<String>? connectors,
+  int slot = 30,
+}) {
+  final base = (stationJson()['points_detail'] as List).first as Map<String, Object?>;
+  final all = points ?? [states];
+  return {
+    'station_id': stationId,
+    'date': '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}',
+    'slot_minutes': slot,
+    'min_booking_minutes': 30,
+    'buffer_minutes': 0,
+    'booking_fee_paise': 1200,
+    'generated_at': DateTime.now().toUtc().toIso8601String(),
+    'points': [
+      for (final (n, ps) in all.indexed)
         {
-          ...(stationJson()['points_detail'] as List).first as Map<String, Object?>,
+          ...base,
+          if (points != null) 'id': 'p${n + 1}',
+          if (points != null) 'code': 'P${n + 1}',
+          if (connectors != null) 'connectors': [{'number': 1, 'type': connectors[n], 'max_power_kw': 60}],
           'cells': [
-            for (final (i, s) in states.indexed)
+            for (final (i, s) in ps.indexed)
               {
-                'start_at': from.add(Duration(minutes: 30 * i)).toIso8601String(),
-                'end_at': from.add(Duration(minutes: 30 * (i + 1))).toIso8601String(),
+                'start_at': from.add(Duration(minutes: slot * i)).toIso8601String(),
+                'end_at': from.add(Duration(minutes: slot * (i + 1))).toIso8601String(),
                 'state': s,
                 'can_start': s == 'available',
               },
           ],
         },
-      ],
-    };
+    ],
+  };
+}
 
 Map<String, Object?> bookingJson({
   String id = 'b1',
@@ -156,7 +172,7 @@ Map<String, Object?> bookingJson({
     'cancellation_actor': cancellationActor,
     'station': {'name': 'Banjara EV Hub', 'address_line1': 'Road No. 12', 'city': 'Hyderabad', 'latitude': 17.41, 'longitude': 78.44, 'status': 'active'},
     'point': {'code': 'A1', 'max_power_kw': 60, 'connectors': ['ccs2']},
-    'policy': {'early_checkin_minutes': 15, 'arrival_grace_minutes': 15},
+    'policy': {'early_checkin_minutes': 15, 'arrival_grace_minutes': 5, 'report_before_minutes': 5},
     'payment': payment,
     'refunds': refunds,
     'messages': [],
@@ -172,12 +188,13 @@ Widget harness({
   Widget? child,
   GoRouter? router,
   Locale locale = const Locale('en'),
+  bool mockPayments = false,
 }) {
   Widget wrap(BuildContext context, Widget? c) => MediaQuery(data: MediaQuery.of(context).copyWith(disableAnimations: true), child: c!);
   const delegates = <LocalizationsDelegate<dynamic>>[L.delegate, GlobalMaterialLocalizations.delegate, GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate];
   return ProviderScope(
     retry: (_, _) => null,
-    overrides: [localStoreProvider.overrideWithValue(store), ...overrides.cast()],
+    overrides: [localStoreProvider.overrideWithValue(store), mockPaymentsProvider.overrideWithValue(mockPayments), ...overrides.cast()],
     child: router != null
         ? MaterialApp.router(routerConfig: router, theme: AppTheme.light(), locale: locale, supportedLocales: L.supported, localizationsDelegates: delegates, builder: wrap)
         : MaterialApp(home: child, theme: AppTheme.light(), locale: locale, supportedLocales: L.supported, localizationsDelegates: delegates, builder: wrap),

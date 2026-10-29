@@ -24,6 +24,24 @@ class FinanceRepository extends Repository {
     return list.map(FinancialPoint.fromJson).toList();
   }
 
+  /// Bookings that had booking-fee money in the period, newest payment first.
+  /// Totals in the result cover every matching booking, not just this page.
+  Future<BookingRevenueReport> bookingRevenue(DateTime from, DateTime to,
+          {String? stationId, String? search, int limit = 50, int offset = 0}) async =>
+      BookingRevenueReport.fromJson(await rpc<Object?>('get_booking_revenue', {
+        'p_from': Repository.date(from),
+        'p_to': Repository.date(to),
+        'p_station_id': stationId,
+        'p_search': search?.trim().isEmpty ?? true ? null : search!.trim(),
+        'p_limit': limit,
+        'p_offset': offset,
+      }));
+
+  Future<List<StationRevenue>> revenueByStation(DateTime from, DateTime to) async {
+    final list = await rpc<List<dynamic>>('get_revenue_by_station', {'p_from': Repository.date(from), 'p_to': Repository.date(to)});
+    return list.map(StationRevenue.fromJson).toList();
+  }
+
   Future<List<PaymentRecord>> payments({GatewayPaymentStatus? status, String? search, int limit = 100, int offset = 0}) {
     var q = client.from('payments').select('*, payment_orders(gateway_order_id), bookings(reference)');
     if (status != null) q = q.eq('status', status.wire);
@@ -52,7 +70,11 @@ class FinanceRepository extends Repository {
   // ---- Expenses -------------------------------------------------------------------
 
   Future<List<ExpenseCategory>> categories() =>
-      rows(client.from('expense_categories').select().order('name'), ExpenseCategory.fromJson);
+      rows(client.from('expense_categories').select().order('sort_order').order('name'), ExpenseCategory.fromJson);
+
+  /// Creates a category when [id] is null, otherwise renames / archives it.
+  Future<String> saveCategory({String? id, required String name, bool active = true}) =>
+      rpc<String>('save_expense_category', {'p_id': id, 'p_name': name, 'p_is_active': active});
 
   Future<List<Expense>> expenses({ExpenseStatus? status, DateTime? from, DateTime? to}) {
     var q = client.from('platform_expenses').select('*, expense_categories(name)');

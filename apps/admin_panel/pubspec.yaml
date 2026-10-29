@@ -20,6 +20,7 @@ dependencies:
   shared_validation:
   supabase_flutter: ^2.18.3
   url_launcher: ^6.3.3
+  web: ^1.1.1
 
 dev_dependencies:
   flutter_lints: ^6.0.0

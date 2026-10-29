@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_data/shared_data.dart';
 import 'package:shared_ui/shared_ui.dart';
@@ -105,10 +106,12 @@ class FailureView extends StatelessWidget {
     final l = context.l;
     final f = AppFailure.from(error);
     final (icon, heading, message) = describeFailure(l, f);
+    // Development builds only: the server's own error, to find the cause.
+    if (kDebugMode) debugPrint('FailureView: ${f.code} ${f.detail ?? ''} ($error)');
     return FallbackView(
       icon: icon,
       title: title ?? heading,
-      message: message,
+      message: kDebugMode ? '$message\n\n[debug] ${f.code}: ${f.detail ?? f.message}' : message,
       tone: f.kind == FailureKind.network ? StatusTone.warning : StatusTone.danger,
       compact: compact,
       actions: [
@@ -122,10 +125,29 @@ class FailureView extends StatelessWidget {
 /// Plain-language title and message for a failure. Internal details are
 /// never shown.
 (IconData, String, String) describeFailure(L l, AppFailure f) {
+  switch (f.code) {
+    case 'no_route':
+      return (Icons.wrong_location_outlined, l(K.noRouteTitle), l(K.noRouteBody));
+    case 'route_too_short':
+      return (Icons.place_outlined, l(K.routeTooShortTitle), l(K.routeTooShortBody));
+    case 'route_too_long':
+      return (Icons.alt_route_rounded, l(K.routeTooLongTitle), l(K.routeTooLongBody));
+    case 'routing_unavailable':
+      return (Icons.cloud_off_rounded, l(K.routingDownTitle), l(K.routingDownBody));
+    case 'area_search_failed':
+      return (Icons.cloud_off_rounded, l(K.placeSearchDownTitle), l(K.placeSearchDownBody));
+  }
   switch (f.kind) {
     case FailureKind.network:
       if (f.code == 'timeout') return (Icons.hourglass_bottom_rounded, l(K.errTimeoutTitle), l(K.errTimeoutBody));
       return (Icons.wifi_off_rounded, l(K.errOfflineTitle), l(K.errOfflineBody));
+    case FailureKind.server when f.code == 'api_key_rejected':
+      // Only a misconfigured build hits this; say so to the developer.
+      return (
+        Icons.cloud_off_rounded,
+        l(K.errServerKeyTitle),
+        kDebugMode ? '${l(K.errServerKeyBody)}\n\nDebug: check SUPABASE_ANON_KEY (env/development.json).' : l(K.errServerKeyBody),
+      );
     case FailureKind.unauthenticated:
       return (Icons.lock_clock_rounded, l(K.errSessionTitle), l(K.errSessionBody));
     case FailureKind.forbidden:
@@ -150,6 +172,9 @@ class FailureView extends StatelessWidget {
 String localizedFailureMessage(L l, AppFailure f) {
   final key = switch (f.code) {
     'slot_unavailable' => K.errSlotTaken,
+    'station_full' => K.errStationFull,
+    'overlapping_booking' => K.errOverlapping,
+    'slot_misaligned' => K.errMisaligned,
     'too_soon' => K.errTooSoon,
     'too_far_ahead' => K.errTooFar,
     'outside_operating_hours' => K.errOutsideHours,

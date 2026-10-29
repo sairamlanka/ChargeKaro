@@ -268,3 +268,149 @@ class RefundRecord {
   final DateTime? processedAt;
   final DateTime createdAt;
 }
+
+/// One booking's booking-fee money in a period (get_booking_revenue).
+/// net = gross − refunds − gateway fees, all from the ledger.
+@immutable
+class BookingRevenueRow {
+  const BookingRevenueRow({
+    required this.bookingId,
+    required this.reference,
+    required this.stationId,
+    required this.stationName,
+    required this.businessName,
+    required this.customerName,
+    required this.slotStart,
+    required this.slotEnd,
+    required this.status,
+    required this.paymentStatus,
+    required this.gross,
+    required this.refunds,
+    required this.fees,
+    required this.net,
+    this.city,
+    this.paidAt,
+  });
+
+  factory BookingRevenueRow.fromJson(Object? json) {
+    final j = Json.of(json);
+    return BookingRevenueRow(
+      bookingId: j.str('booking_id'),
+      reference: j.str('reference'),
+      stationId: j.str('station_id'),
+      stationName: j.str('station_name'),
+      city: j.strOrNull('city'),
+      businessName: j.str('business_name'),
+      customerName: j.str('customer_display_name'),
+      slotStart: j.dateTime('slot_start'),
+      slotEnd: j.dateTime('slot_end'),
+      status: BookingStatus.parse(j.strOrNull('status')),
+      paymentStatus: BookingPaymentStatus.parse(j.strOrNull('payment_status')),
+      paidAt: j.dateTimeOrNull('paid_at'),
+      gross: Money(j.integer('gross_paise', 0)),
+      refunds: Money(j.integer('refunds_paise', 0)),
+      fees: Money(j.integer('fees_paise', 0)),
+      net: Money(j.integer('net_paise', 0)),
+    );
+  }
+
+  final String bookingId;
+  final String reference;
+  final String stationId;
+  final String stationName;
+  final String? city;
+  final String businessName;
+  final String customerName;
+  final DateTime slotStart;
+  final DateTime slotEnd;
+  final BookingStatus status;
+  final BookingPaymentStatus paymentStatus;
+  final DateTime? paidAt;
+  final Money gross;
+  final Money refunds;
+  final Money fees;
+  final Money net;
+}
+
+@immutable
+class BookingRevenueReport {
+  const BookingRevenueReport({
+    required this.totalCount,
+    required this.paidBookings,
+    required this.gross,
+    required this.refunds,
+    required this.fees,
+    required this.net,
+    required this.rows,
+  });
+
+  factory BookingRevenueReport.fromJson(Object? json) {
+    final j = Json.of(json);
+    final t = j.objectOrNull('totals');
+    Money m(String k) => Money(t?.integer(k, 0) ?? 0);
+    return BookingRevenueReport(
+      totalCount: j.integer('total_count', 0),
+      paidBookings: t?.integer('paid_bookings', 0) ?? 0,
+      gross: m('gross_paise'),
+      refunds: m('refunds_paise'),
+      fees: m('fees_paise'),
+      net: m('net_paise'),
+      rows: [for (final r in j.objects('rows')) BookingRevenueRow.fromJson(r.map)],
+    );
+  }
+
+  /// Bookings matching the filter, across all pages.
+  final int totalCount;
+  final int paidBookings;
+  final Money gross;
+  final Money refunds;
+  final Money fees;
+  final Money net;
+
+  /// This page only.
+  final List<BookingRevenueRow> rows;
+}
+
+/// Booking-fee revenue earned through one station (get_revenue_by_station).
+@immutable
+class StationRevenue {
+  const StationRevenue({
+    required this.stationId,
+    required this.stationName,
+    required this.businessName,
+    required this.isDemo,
+    required this.paidBookings,
+    required this.gross,
+    required this.refunds,
+    required this.fees,
+    required this.net,
+    this.city,
+  });
+
+  factory StationRevenue.fromJson(Object? json) {
+    final j = Json.of(json);
+    return StationRevenue(
+      stationId: j.str('station_id'),
+      stationName: j.str('station_name'),
+      city: j.strOrNull('city'),
+      businessName: j.str('business_name'),
+      isDemo: j.boolean('is_demo'),
+      paidBookings: j.integer('paid_bookings', 0),
+      gross: Money(j.integer('gross_paise', 0)),
+      refunds: Money(j.integer('refunds_paise', 0)),
+      fees: Money(j.integer('fees_paise', 0)),
+      net: Money(j.integer('net_paise', 0)),
+    );
+  }
+
+  final String stationId;
+  final String stationName;
+  final String? city;
+  final String businessName;
+  final bool isDemo;
+  final int paidBookings;
+  final Money gross;
+  final Money refunds;
+  final Money fees;
+  final Money net;
+}

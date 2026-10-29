@@ -16,9 +16,9 @@ import 'flow_widgets.dart';
 
 /// Re-checks the slot and the fee on the server for the current draft.
 final _slotCheckProvider = FutureProvider.autoDispose<SlotCheck?>((ref) async {
-  final d = ref.watch(bookingFlowProvider.select((d) => d == null ? null : (d.pointId, d.start, d.end)));
+  final d = ref.watch(bookingFlowProvider.select((d) => d == null ? null : (d.stationId, d.start, d.end, d.connector)));
   if (d == null) return null;
-  return ref.watch(retailRepositoryProvider).checkSlot(d.$1, d.$2, d.$3);
+  return ref.watch(retailRepositoryProvider).checkSlot(d.$1, d.$2, d.$3, connector: d.$4);
 });
 
 /// Step 4: everything about the booking on one screen before any money
@@ -47,7 +47,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         await repo.recordConsents(version: terms.termsVersion, terms: d.termsAccepted, marketing: d.marketingOptIn).catchError((_) {});
       }
       final b = await repo.createHold(
-        pointId: d.pointId,
+        stationId: d.stationId,
+        connector: d.connector,
         start: d.start,
         end: d.end,
         idempotencyKey: d.idempotencyKey,
@@ -64,7 +65,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       }
     } catch (e) {
       final f = failureOf(e);
-      if (f.code == 'slot_unavailable') {
+      if (f.code == 'slot_unavailable' || f.code == 'station_full') {
         // The key is tied to this attempt; a new slot needs a new one.
         flow.releaseHold();
         ref.invalidate(_slotCheckProvider);
@@ -137,7 +138,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                   Text(draft.stationName, style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                   if (draft.stationAddress.isNotEmpty) Text(draft.stationAddress, style: t.textTheme.bodySmall),
                   const SizedBox(height: 8),
-                  InfoLine(icon: Icons.power_rounded, label: l(K.chargingPoint), value: draft.pointLabel),
+                  InfoLine(icon: Icons.power_rounded, label: l(K.chargingPoint), value: l(K.pointAssignedLater)),
                   if (draft.connectorLabel.isNotEmpty) InfoLine(icon: Icons.cable_rounded, label: l(K.connector), value: draft.connectorLabel),
                 ]),
               ),
@@ -148,17 +149,32 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                   InfoLine(icon: Icons.event_rounded, label: l(K.date), value: f.dayLong(draft.start)),
                   InfoLine(icon: Icons.schedule_rounded, label: l(K.time), value: '${f.timeRange(draft.start, draft.end)} ${l(K.istSuffix)}', emphasize: true),
                   InfoLine(icon: Icons.timelapse_rounded, label: l(K.duration), value: f.duration(draft.duration)),
-                  if (station != null)
+                  if (station != null) ...[
                     InfoLine(
-                      icon: Icons.login_rounded,
-                      label: l(K.arrivalWindow),
-                      value: f.timeRange(
-                        draft.start.subtract(Duration(minutes: station.policy.earlyCheckinMinutes)),
-                        draft.start.add(Duration(minutes: station.policy.arrivalGraceMinutes)),
-                      ),
+                      icon: Icons.flag_rounded,
+                      label: l(K.reportByLabel),
+                      value: l(K.reportByValue, {
+                        'time': f.time(draft.start.subtract(Duration(minutes: station.policy.reportBeforeMinutes))),
+                        'mins': station.policy.reportBeforeMinutes,
+                      }),
+                      emphasize: true,
                     ),
+                    InfoLine(
+                      icon: Icons.timer_outlined,
+                      label: l(K.pointHeldUntil),
+                      value: f.time(draft.start.add(Duration(minutes: station.policy.arrivalGraceMinutes))),
+                    ),
+                  ],
                 ]),
               ),
+              if (station != null) ...[
+                const SizedBox(height: 12),
+                FlowNotice(
+                  text: l(K.arrivalRuleNotice, {'before': station.policy.reportBeforeMinutes, 'grace': station.policy.arrivalGraceMinutes}),
+                  icon: Icons.directions_walk_rounded,
+                  tone: StatusTone.warning,
+                ),
+              ],
               const SizedBox(height: 12),
               SectionCard(
                 title: l(K.contactLabel),
@@ -208,11 +224,11 @@ class AppFailureView {
     final l = context.l;
     final msg = localizedFailureMessage(l, failure);
     final Widget? action = switch (failure.code) {
-      'slot_unavailable' || 'too_soon' || 'outside_operating_hours' || 'blocked_period' => TextButton(
+      'slot_unavailable' || 'station_full' || 'too_soon' || 'slot_misaligned' || 'outside_operating_hours' || 'blocked_period' => TextButton(
           onPressed: () => context.go('/station/${d.stationId}/slots'),
           child: Text(l(K.chooseAnotherTime)),
         ),
-      'too_many_pending_holds' => TextButton(onPressed: () => context.go('/bookings'), child: Text(l(K.myBookings))),
+      'too_many_pending_holds' || 'overlapping_booking' => TextButton(onPressed: () => context.go('/bookings'), child: Text(l(K.myBookings))),
       'station_not_bookable' || 'point_not_bookable' => TextButton(
           onPressed: () => context.push('/alternatives?exclude=${d.stationId}&lat=${d.latitude}&lng=${d.longitude}'),
           child: Text(l(K.seeAlternatives)),

@@ -151,3 +151,95 @@ select '00000000-0000-4000-a000-000000000021', '00000000-0000-4000-c000-00000000
   from (values ('00000000-0000-4000-d000-000000000001'::uuid, 1), ('00000000-0000-4000-d000-000000000002'::uuid, 2)) p(point, day_offset)
   cross join lateral (select ((current_date + p.day_offset)::timestamp + interval '10 hours') at time zone 'Asia/Kolkata' as start_at) t
  where not exists (select 1 from public.bookings where customer_id = '00000000-0000-4000-a000-000000000021');
+
+-- A three-point station in Hyderabad for trying station-level booking in the
+-- customer app: two CCS2 fast chargers and one Type 2 AC point. Search for
+-- "Banjara Hills" (the emulator's default location is not in India).
+insert into public.stations (id, business_id, name, description, address_line1, landmark, city, district, state, postal_code,
+                             latitude, longitude, contact_phone, parking_spaces, amenities, accepted_payment_methods,
+                             status, approved_at, approved_by)
+values
+  ('00000000-0000-4000-c000-000000000003', '00000000-0000-4000-b000-000000000001', '[DEMO] Green Volt Banjara Hills',
+   'Demo station with three points for local development.', 'Road No. 12, Banjara Hills', 'Opp. KBR Park gate 3',
+   'Hyderabad', 'Hyderabad', 'Telangana', '500034', 17.412600, 78.438200, '+919800000004', 3,
+   array['restroom', 'cafe', 'cctv'], array['upi', 'debit_card', 'cash'], 'active', now(), '00000000-0000-4000-a000-000000000001')
+on conflict do nothing;
+
+insert into public.station_operating_hours (station_id, day_of_week, opens_minute, closes_minute)
+select '00000000-0000-4000-c000-000000000003'::uuid, d, 360, 1380 from generate_series(1, 7) d
+on conflict do nothing;
+
+insert into public.charging_points (id, station_id, code, name, current_type, max_power_kw, vehicle_compatibility,
+                                    telemetry_capability)
+values
+  ('00000000-0000-4000-d000-000000000011', '00000000-0000-4000-c000-000000000003', 'BH-DC1', 'DC fast 1', 'dc', 60, array['four_wheeler'], 'none'),
+  ('00000000-0000-4000-d000-000000000012', '00000000-0000-4000-c000-000000000003', 'BH-DC2', 'DC fast 2', 'dc', 60, array['four_wheeler'], 'none'),
+  ('00000000-0000-4000-d000-000000000013', '00000000-0000-4000-c000-000000000003', 'BH-AC1', 'AC 1', 'ac', 7.4, array['four_wheeler', 'two_wheeler'], 'none')
+on conflict do nothing;
+
+insert into public.charging_connectors (charging_point_id, connector_number, connector_type, max_power_kw) values
+  ('00000000-0000-4000-d000-000000000011', 1, 'ccs2', 60),
+  ('00000000-0000-4000-d000-000000000012', 1, 'ccs2', 60),
+  ('00000000-0000-4000-d000-000000000013', 1, 'type2_ac', 7.4)
+on conflict do nothing;
+
+update public.station_applications
+   set status = 'approved', revision = 1, submitted_at = now() - interval '2 days',
+       submitted_by = '00000000-0000-4000-a000-000000000011', decided_at = now() - interval '1 day',
+       decided_by = '00000000-0000-4000-a000-000000000001'
+ where station_id = '00000000-0000-4000-c000-000000000003' and status = 'draft';
+
+-- Ten route-test stations for Along My Route (Customer App), all on highways
+-- so each appears only for the trips it lies on (default 5 km from the road):
+--   Hyderabad -> Vijayawada (NH65):  1 Choutuppal, 2 Suryapet
+--   Bengaluru -> Hyderabad (NH44):   5 Kurnool, 7 Jadcherla
+--   Tirupati -> Bengaluru:           3 Chittoor, 4 Palamaner, 6 Kolar
+--   Pune -> Mumbai (Expressway):     8 Lonavala, 9 Khalapur, 10 Panvel
+-- Open 24 hours, so they are listed whatever time you test.
+insert into public.stations (id, business_id, name, description, address_line1, city, district, state, postal_code,
+                             latitude, longitude, contact_phone, parking_spaces, amenities, accepted_payment_methods,
+                             status, approved_at, approved_by)
+select ('00000000-0000-4000-c000-0000000001' || lpad(n::text, 2, '0'))::uuid, '00000000-0000-4000-b000-000000000001',
+       '[DEMO] Station ' || n || ' ' || city, 'Route test station ' || n || ' (' || route || ').', road, city, district, state, pin,
+       lat, lng, '+9198000001' || lpad(n::text, 2, '0'), 4, array['restroom', 'cafe'], array['upi', 'cash'],
+       'active', now(), '00000000-0000-4000-a000-000000000001'
+  from (values
+    (1,  'Hyderabad -> Vijayawada', 'NH65, Choutuppal',         'Choutuppal', 'Yadadri Bhuvanagiri', 'Telangana',      '508252', 17.251600, 78.897700),
+    (2,  'Hyderabad -> Vijayawada', 'NH65, Suryapet bypass',    'Suryapet',   'Suryapet',            'Telangana',      '508213', 17.144000, 79.625000),
+    (3,  'Tirupati -> Bengaluru',   'NH69, Chittoor',           'Chittoor',   'Chittoor',            'Andhra Pradesh', '517001', 13.217600, 79.100300),
+    (4,  'Tirupati -> Bengaluru',   'NH69, Palamaner',          'Palamaner',  'Chittoor',            'Andhra Pradesh', '517408', 13.200000, 78.750000),
+    (5,  'Bengaluru -> Hyderabad',  'NH44, Kurnool bypass',     'Kurnool',    'Kurnool',             'Andhra Pradesh', '518002', 15.798000, 78.042000),
+    (6,  'Tirupati -> Bengaluru',   'NH75, Kolar',              'Kolar',      'Kolar',               'Karnataka',      '563101', 13.136000, 78.129000),
+    (7,  'Bengaluru -> Hyderabad',  'NH44, Jadcherla',          'Jadcherla',  'Mahabubnagar',        'Telangana',      '509301', 16.763000, 78.138000),
+    (8,  'Pune -> Mumbai',          'Mumbai-Pune Expressway, Lonavala', 'Lonavala', 'Pune',          'Maharashtra',    '410401', 18.750000, 73.407000),
+    (9,  'Pune -> Mumbai',          'Mumbai-Pune Expressway, Khalapur', 'Khalapur', 'Raigad',        'Maharashtra',    '410202', 18.824000, 73.270000),
+    (10, 'Pune -> Mumbai',          'Mumbai-Pune Expressway, Panvel',   'Panvel',   'Raigad',        'Maharashtra',    '410206', 18.989400, 73.117500)
+  ) as t(n, route, road, city, district, state, pin, lat, lng)
+on conflict do nothing;
+
+insert into public.station_operating_hours (station_id, day_of_week, opens_minute, closes_minute)
+select ('00000000-0000-4000-c000-0000000001' || lpad(n::text, 2, '0'))::uuid, d, 0, 1440
+  from generate_series(1, 10) n, generate_series(1, 7) d
+on conflict do nothing;
+
+insert into public.charging_points (id, station_id, code, name, current_type, max_power_kw, vehicle_compatibility,
+                                    telemetry_capability)
+select ('00000000-0000-4000-d000-00000001' || lpad(n::text, 2, '0') || p.suffix)::uuid,
+       ('00000000-0000-4000-c000-0000000001' || lpad(n::text, 2, '0'))::uuid,
+       'S' || n || '-' || p.code, p.name, p.kind::public.current_type, p.kw, p.vehicles, 'none'
+  from generate_series(1, 10) n,
+       (values ('01', 'DC1', 'DC fast 1', 'dc', 60::numeric, array['four_wheeler']),
+               ('02', 'AC1', 'AC 1', 'ac', 7.4::numeric, array['four_wheeler', 'two_wheeler'])) as p(suffix, code, name, kind, kw, vehicles)
+on conflict do nothing;
+
+insert into public.charging_connectors (charging_point_id, connector_number, connector_type, max_power_kw)
+select ('00000000-0000-4000-d000-00000001' || lpad(n::text, 2, '0') || c.suffix)::uuid, 1, c.kind::public.connector_type, c.kw
+  from generate_series(1, 10) n,
+       (values ('01', 'ccs2', 60::numeric), ('02', 'type2_ac', 7.4::numeric)) as c(suffix, kind, kw)
+on conflict do nothing;
+
+update public.station_applications
+   set status = 'approved', revision = 1, submitted_at = now() - interval '2 days',
+       submitted_by = '00000000-0000-4000-a000-000000000011', decided_at = now() - interval '1 day',
+       decided_by = '00000000-0000-4000-a000-000000000001'
+ where station_id::text like '00000000-0000-4000-c000-0000000001%' and status = 'draft';
