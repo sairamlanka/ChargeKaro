@@ -34,7 +34,42 @@ final financeSummaryProvider = FutureProvider.autoDispose<FinancialSummary>((ref
 
 final financeSeriesProvider = FutureProvider.autoDispose<List<FinancialPoint>>((ref) {
   final r = ref.watch(financeRangeProvider);
-  final days = r.to.difference(r.from).inDays;
-  final bucket = days > 180 ? 'month' : (days > 45 ? 'week' : 'day');
+  final bucket = ref.watch(financeBucketProvider) ?? autoBucket(r);
   return ref.watch(financeRepositoryProvider).timeseries(r.from, r.to, bucket: bucket);
 });
+
+/// Chart / report granularity. Null picks one from the range length.
+class BucketNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void set(String? bucket) => state = bucket;
+}
+
+final financeBucketProvider = NotifierProvider<BucketNotifier, String?>(BucketNotifier.new);
+
+String autoBucket(DateRange r) {
+  final days = r.to.difference(r.from).inDays;
+  return days > 180 ? 'month' : (days > 45 ? 'week' : 'day');
+}
+
+final revenueByStationProvider = FutureProvider.autoDispose<List<StationRevenue>>((ref) {
+  final r = ref.watch(financeRangeProvider);
+  return ref.watch(financeRepositoryProvider).revenueByStation(r.from, r.to);
+});
+
+final financeExpensesProvider = FutureProvider.autoDispose<List<Expense>>((ref) {
+  final r = ref.watch(financeRangeProvider);
+  return ref.watch(financeRepositoryProvider).expenses(from: r.from, to: r.to);
+});
+
+final expenseCategoriesProvider =
+    FutureProvider.autoDispose<List<ExpenseCategory>>((ref) => ref.watch(financeRepositoryProvider).categories());
+
+/// Refreshes every finance figure after a write.
+void refreshFinance(WidgetRef ref) {
+  ref.invalidate(financeExpensesProvider);
+  ref.invalidate(financeSummaryProvider);
+  ref.invalidate(financeSeriesProvider);
+  ref.invalidate(revenueByStationProvider);
+}

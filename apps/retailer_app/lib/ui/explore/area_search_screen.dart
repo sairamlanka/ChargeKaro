@@ -7,12 +7,14 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../data/models.dart';
 import '../../l10n/l10n.dart';
-import '../../state/providers.dart';
+import '../../state/place_suggestions.dart';
 import '../../state/search.dart';
 import '../common/fallback.dart';
 
-/// Type a locality, street, landmark, city or PIN code; pick the intended
-/// place when several match.
+/// Near Me without the device location: type a locality, street, landmark,
+/// city or PIN code and pick the place; stations near it are shown. Offered
+/// when location is off, denied or unavailable. Along My Route has its own
+/// screen (route_search_screen.dart).
 class AreaSearchScreen extends ConsumerStatefulWidget {
   const AreaSearchScreen({super.key});
 
@@ -26,6 +28,9 @@ class _AreaSearchScreenState extends ConsumerState<AreaSearchScreen> {
   AsyncValue<AreaSearchOutcome>? _result;
   String _lastQuery = '';
 
+  /// The full search is still running behind the suggestions shown.
+  bool _loading = false;
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -33,28 +38,57 @@ class _AreaSearchScreenState extends ConsumerState<AreaSearchScreen> {
     super.dispose();
   }
 
+  /// Shows what is known at once, then asks the server after a short pause
+  /// in typing.
   void _onChanged(String v) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () => _search(v));
+    final q = v.trim();
+    if (q.length < 2) {
+      setState(() {
+        _result = null;
+        _loading = false;
+      });
+      return;
+    }
+    _lastQuery = q;
+    final s = ref.read(placeSuggestionsProvider);
+    final now = s.instant(q);
+    final done = s.isCached(q);
+    setState(() {
+      if (now != null) {
+        _result = AsyncValue.data(AreaSearchOutcome(now, providerAvailable: true));
+      } else if (_result?.hasValue != true) {
+        _result = const AsyncValue.loading();
+      }
+      _loading = !done;
+    });
+    if (!done) _debounce = Timer(const Duration(milliseconds: 250), () => _search(q));
   }
 
   Future<void> _search(String v) async {
     final q = v.trim();
-    if (q.length < 2) {
-      setState(() => _result = null);
-      return;
-    }
+    if (q.length < 2) return;
     _lastQuery = q;
-    setState(() => _result = const AsyncValue.loading());
     try {
-      final r = await ref.read(retailRepositoryProvider).searchAreas(q);
-      if (mounted && q == _lastQuery) setState(() => _result = AsyncValue.data(r));
+      final r = await ref.read(placeSuggestionsProvider).fetch(q);
+      if (mounted && q == _lastQuery) {
+        setState(() {
+          _result = AsyncValue.data(r);
+          _loading = false;
+        });
+      }
     } catch (e, st) {
-      if (mounted && q == _lastQuery) setState(() => _result = AsyncValue.error(e, st));
+      if (mounted && q == _lastQuery) {
+        setState(() {
+          _result = AsyncValue.error(e, st);
+          _loading = false;
+        });
+      }
     }
   }
 
   void _pick(AreaMatch m) {
+    ref.read(placeSuggestionsProvider).remember(m);
     ref.read(searchProvider.notifier).setArea(m);
     context.pop();
   }
@@ -69,8 +103,8 @@ class _AreaSearchScreenState extends ConsumerState<AreaSearchScreen> {
       body = FallbackView(
         compact: true,
         icon: Icons.travel_explore_rounded,
-        title: l(K.areaSearchIntroTitle),
-        message: l(K.areaSearchIntroBody),
+        title: l(K.pickLocationTitle),
+        message: l(K.pickLocationBody),
         actions: [
           FallbackAction(l(K.useMyLocation), () {
             ref.read(searchProvider.notifier).useCurrentLocation();
@@ -149,14 +183,17 @@ class _AreaSearchScreenState extends ConsumerState<AreaSearchScreen> {
                     tooltip: l(K.clear),
                     onPressed: () {
                       _text.clear();
-                      setState(() => _result = null);
+                      _onChanged('');
                     },
                     icon: const Icon(Icons.close_rounded),
                   ),
           ),
         ),
       ),
-      body: AnimatedSwitcher(duration: Motion.fast, child: KeyedSubtree(key: ValueKey(r?.isLoading), child: body)),
+      body: Column(children: [
+        SizedBox(height: 2, child: _loading ? const LinearProgressIndicator(minHeight: 2) : null),
+        Expanded(child: AnimatedSwitcher(duration: Motion.fast, child: KeyedSubtree(key: ValueKey(r?.isLoading), child: body))),
+      ]),
     );
   }
 }

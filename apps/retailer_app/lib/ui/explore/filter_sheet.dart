@@ -11,7 +11,6 @@ List<String> activeFilterLabels(L l, SearchFilters f) => [
       for (final c in f.connectors) c.label,
       if (f.minPowerKw != null) l(K.filterPowerAtLeast, {'kw': f.minPowerKw!.toStringAsFixed(0)}),
       if (f.availableNow) l(K.filterAvailableNow),
-      if (f.openNow) l(K.filterOpenNow),
       if (f.freeToday) l(K.filterFreeToday),
       if (f.bookableOnly) l(K.filterBookableOnly),
       if (f.vehicle != null) f.vehicle!.label,
@@ -69,7 +68,6 @@ class _FilterSheetState extends State<_FilterSheet> {
             section(l(K.filterAvailability)),
             SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(l(K.filterAvailableNow)), subtitle: Text(l(K.filterAvailableNowHint)), value: f.availableNow, onChanged: (v) => setState(() => f = f.copyWith(availableNow: v))),
             SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(l(K.filterFreeToday)), value: f.freeToday, onChanged: (v) => setState(() => f = f.copyWith(freeToday: v))),
-            SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(l(K.filterOpenNow)), value: f.openNow, onChanged: (v) => setState(() => f = f.copyWith(openNow: v))),
             SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(l(K.filterBookableOnly)), value: f.bookableOnly, onChanged: (v) => setState(() => f = f.copyWith(bookableOnly: v))),
             section(l(K.filterConnector)),
             Wrap(spacing: 8, runSpacing: 8, children: [

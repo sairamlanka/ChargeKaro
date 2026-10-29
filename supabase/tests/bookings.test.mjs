@@ -25,7 +25,7 @@ describe('reservation rules', () => {
     await rejectsWith(hold(customer, pointIds[0], ist(1, 5), 30), { status: 422, code: 'outside_operating_hours' });
     await rejectsWith(hold(customer, pointIds[0], ist(1, 21, 30), 60), { status: 422, code: 'outside_operating_hours' });
     await rejectsWith(hold(customer, pointIds[0], ist(1, 10, 10), 30), { status: 422, code: 'slot_misaligned' });
-    await rejectsWith(hold(customer, pointIds[0], ist(1, 10), 45), { status: 422, code: 'invalid_duration' });
+    await rejectsWith(hold(customer, pointIds[0], ist(1, 10), 50), { status: 422, code: 'invalid_duration' });
     await rejectsWith(hold(customer, pointIds[0], ist(1, 10), 180), { status: 422, code: 'invalid_duration' });
     await rejectsWith(hold(customer, pointIds[0], ist(30, 10), 30), { status: 422, code: 'too_far_ahead' });
     await rejectsWith(hold(customer, pointIds[0], ist(-1, 10), 30), { status: 422, code: 'too_soon' });
@@ -326,14 +326,16 @@ describe('no-shows', () => {
     assert.equal(res.status, 'no_show');
   });
 
-  test('the job marks no-shows only after the reserved period has ended', async () => {
-    const { stationId, pointIds } = await approvedStation();
+  test('the job marks no-shows once the arrival grace period has ended, releasing the rest of the slot', async () => {
+    const { stationId, pointIds } = await approvedStation({ points: ['A', 'B'] });
     const customer = await createUser('customer');
     const ended = await insertBooking({ customer, stationId, pointId: pointIds[0], start: ist(-1, 10), minutes: 30 });
-    const ongoing = await insertBooking({ customer, stationId, pointId: pointIds[0], start: new Date(Date.now() - 20 * 60000), minutes: 60 });
+    const late = await insertBooking({ customer, stationId, pointId: pointIds[1], start: new Date(Date.now() - 10 * 60000), minutes: 60 });
+    const inGrace = await insertBooking({ customer, stationId, pointId: pointIds[0], start: new Date(Date.now() - 3 * 60000), minutes: 60 });
     await rpc('service', 'run_booking_jobs');
     assert.equal((await one(`select status from public.bookings where id = $1`, [ended.id])).status, 'no_show');
-    assert.equal((await one(`select status from public.bookings where id = $1`, [ongoing.id])).status, 'confirmed');
+    assert.equal((await one(`select status from public.bookings where id = $1`, [late.id])).status, 'no_show');
+    assert.equal((await one(`select status from public.bookings where id = $1`, [inGrace.id])).status, 'confirmed');
   });
 });
 

@@ -27,6 +27,24 @@ comment on column public.profiles.notification_prefs is
 grant update (receipt_email, notification_prefs) on public.profiles to authenticated;
 
 -------------------------------------------------------------------------------
+-- Arrival rules and finer slots
+-------------------------------------------------------------------------------
+
+-- Customers are asked to reach the station a few minutes before the start,
+-- and the point is held only briefly after it (then released as a no-show).
+-- A 15-minute grid lets 30, 45, 60 ... minute bookings share points.
+alter table public.station_booking_policies
+  add column report_before_minutes int not null default 5 check (report_before_minutes between 0 and 60);
+alter table public.station_booking_policies
+  alter column slot_duration_minutes set default 15,
+  alter column arrival_grace_minutes set default 5;
+
+comment on column public.station_booking_policies.report_before_minutes is
+  'Customers are asked to arrive this many minutes before the start. Shown to the customer; check-in itself opens early_checkin_minutes before.';
+comment on column public.station_booking_policies.arrival_grace_minutes is
+  'The point is held this long after the start. After it, an unchecked-in booking becomes a no-show and the point is released.';
+
+-------------------------------------------------------------------------------
 -- Public visibility helpers
 -------------------------------------------------------------------------------
 
@@ -496,6 +514,7 @@ begin
       'buffer_minutes', v_policy.buffer_minutes,
       'arrival_grace_minutes', v_policy.arrival_grace_minutes,
       'early_checkin_minutes', v_policy.early_checkin_minutes,
+      'report_before_minutes', v_policy.report_before_minutes,
       'customer_cancel_until_minutes', v_policy.customer_cancel_until_minutes,
       'auto_no_show_enabled', v_policy.auto_no_show_enabled
     ),
@@ -1015,6 +1034,7 @@ as $$
     'policy', jsonb_build_object(
       'arrival_grace_minutes', pol.arrival_grace_minutes,
       'early_checkin_minutes', pol.early_checkin_minutes,
+      'report_before_minutes', pol.report_before_minutes,
       'customer_cancel_until_minutes', pol.customer_cancel_until_minutes,
       'auto_no_show_enabled', pol.auto_no_show_enabled),
     'payment', (select jsonb_build_object('status', pm.status, 'reference', pm.gateway_payment_id, 'method', pm.method,

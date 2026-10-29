@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../data/location_service.dart';
+import '../../data/models.dart';
 import '../../l10n/l10n.dart';
 import '../../state/booking_flow.dart';
 import '../../state/providers.dart';
@@ -14,17 +15,18 @@ import '../common/map_view.dart';
 import '../common/widgets.dart';
 import 'filter_sheet.dart';
 
-/// Home and search results in one place: search by area or current
-/// location, then browse nearby stations as a list or on a map. No sign-in
-/// is ever asked for here.
+/// Home and search results in one place: plan a trip (stations along the
+/// route) or use the current location (stations nearby), then browse them
+/// as a list or on a map. No sign-in is ever asked for here.
 class ExploreScreen extends ConsumerWidget {
   const ExploreScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final search = ref.watch(searchProvider);
-    final hasResults = search.origin != null;
+    final hasResults = search.active;
     if (hasResults && search.view == ViewMode.map && search.result?.value != null && search.result!.value!.inServiceArea) {
+      final anchor = search.anchor!;
       return Scaffold(
         body: Column(children: [
           const _Hero(compact: true),
@@ -32,11 +34,13 @@ class ExploreScreen extends ConsumerWidget {
           Expanded(
             child: StationsMap(
               stations: search.visible(DateTime.now()),
-              centerLat: search.origin!.latitude,
-              centerLng: search.origin!.longitude,
-              radiusKm: search.radiusKm,
-              showUserDot: search.origin!.fromDevice,
-              onOpen: (s) => context.push('/station/${s.id}'),
+              driving: search.driving,
+              centerLat: anchor.latitude,
+              centerLng: anchor.longitude,
+              radiusKm: search.rangeKm,
+              route: search.trip?.plan?.path,
+              showUserDot: search.isNearby,
+              onOpen: (s) => context.push(slotsRoute(s)),
               onShowList: () => ref.read(searchProvider.notifier).setView(ViewMode.list),
             ),
           ),
@@ -53,6 +57,7 @@ class ExploreScreen extends ConsumerWidget {
           const SliverToBoxAdapter(child: _Hero()),
           if (search.locationProblem != null) SliverToBoxAdapter(child: _LocationProblemCard(problem: search.locationProblem!)),
           if (hasResults) ...[
+            const SliverToBoxAdapter(child: _NextBookingBanner()),
             const SliverToBoxAdapter(child: _ResultsToolbar()),
             const _ResultsList(),
           ] else
@@ -74,6 +79,8 @@ class _Hero extends ConsumerWidget {
     final t = Theme.of(context);
     final search = ref.watch(searchProvider);
     final locating = search.locating == LocatingState.locating;
+    final trip = search.trip;
+    final fromLabel = trip == null ? '' : (trip.from.fromDevice ? l(K.yourLocation) : trip.from.label);
     return AuroraHero(
       child: SafeArea(
         bottom: false,
@@ -103,58 +110,73 @@ class _Hero extends ConsumerWidget {
                   Entrance(index: 1, child: Text(l(K.heroSubtitle), style: t.textTheme.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.85)))),
                   const SizedBox(height: 18),
                 ],
-                Entrance(
-                  index: 2,
-                  child: Semantics(
-                    button: true,
-                    label: l(K.searchAreaHint),
-                    excludeSemantics: true,
-                    child: Material(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      elevation: 6,
-                      shadowColor: Colors.black38,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () => context.push('/area-search'),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                          child: Row(children: [
-                            const Icon(Icons.search_rounded, color: Brand.greenDeep),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                search.origin != null && !search.origin!.fromDevice ? search.origin!.label : l(K.searchAreaHint),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: t.textTheme.bodyLarge?.copyWith(
-                                  color: search.origin != null && !search.origin!.fromDevice ? Brand.ink : Colors.blueGrey.shade400,
-                                ),
-                              ),
-                            ),
-                          ]),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                Entrance(index: 2, child: _ModeTabs(mode: search.mode, onChanged: ref.read(searchProvider.notifier).setMode)),
                 const SizedBox(height: 10),
                 Entrance(
                   index: 3,
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: BorderSide(color: Colors.white.withValues(alpha: 0.55)),
-                        backgroundColor: search.origin?.fromDevice == true ? Colors.white.withValues(alpha: 0.16) : null,
-                      ),
-                      onPressed: locating ? null : () => ref.read(searchProvider.notifier).useCurrentLocation(),
-                      icon: locating
-                          ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.my_location_rounded),
-                      label: Text(locating ? l(K.locating) : l(K.useMyLocation)),
-                    ),
+                  child: AnimatedSwitcher(
+                    duration: Motion.fast,
+                    child: search.mode == SearchMode.route
+                        ? Semantics(
+                            key: const ValueKey('route'),
+                            button: true,
+                            label: trip == null ? l(K.tripSearchHint) : l(K.tripSummary, {'from': fromLabel, 'to': trip.to.label}),
+                            excludeSemantics: true,
+                            child: Material(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              elevation: 6,
+                              shadowColor: Colors.black38,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(16),
+                                onTap: () => context.push('/route-search'),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                  child: Row(children: [
+                                    const Icon(Icons.alt_route_rounded, color: Brand.greenDeep),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: trip == null
+                                          ? Text(
+                                              l(K.tripSearchHint),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: t.textTheme.bodyLarge?.copyWith(color: Colors.blueGrey.shade400),
+                                            )
+                                          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                              Text(fromLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.textTheme.bodySmall?.copyWith(color: Colors.blueGrey.shade600)),
+                                              Text(trip.to.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.textTheme.bodyLarge?.copyWith(color: Brand.ink)),
+                                            ]),
+                                    ),
+                                  ]),
+                                ),
+                              ),
+                            ),
+                          )
+                        : Column(key: const ValueKey('nearby'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                            FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: Brand.greenDeep,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                              onPressed: locating ? null : () => ref.read(searchProvider.notifier).useCurrentLocation(),
+                              icon: locating
+                                  ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                                  : Icon(search.origin?.fromDevice == true ? Icons.refresh_rounded : Icons.my_location_rounded),
+                              label: Text(locating
+                                  ? l(K.locating)
+                                  : (search.origin?.fromDevice == true ? l(K.updateMyLocation) : l(K.findNearbyStations))),
+                            ),
+                            TextButton.icon(
+                              style: TextButton.styleFrom(foregroundColor: Colors.white),
+                              onPressed: () => context.push('/pick-location'),
+                              icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
+                              label: Text(search.origin != null && !search.origin!.fromDevice
+                                  ? l(K.nearPlaceChange, {'place': search.origin!.label})
+                                  : l(K.chooseLocationInstead)),
+                            ),
+                          ]),
                   ),
                 ),
               ]),
@@ -162,6 +184,66 @@ class _Hero extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Source & destination, or live location: one search at a time.
+class _ModeTabs extends StatelessWidget {
+  const _ModeTabs({required this.mode, required this.onChanged});
+  final SearchMode mode;
+  final ValueChanged<SearchMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = context.l;
+    final t = Theme.of(context);
+    Widget tab(SearchMode m, IconData icon, String label) {
+      final selected = m == mode;
+      return Expanded(
+        child: Semantics(
+          selected: selected,
+          button: true,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => onChanged(m),
+            child: AnimatedContainer(
+              duration: Motion.fast,
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+              decoration: BoxDecoration(
+                color: selected ? Colors.white : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(icon, size: 18, color: selected ? Brand.greenDeep : Colors.white),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.textTheme.labelLarge?.copyWith(color: selected ? Brand.greenDeep : Colors.white, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+      ),
+      child: Row(children: [
+        tab(SearchMode.route, Icons.alt_route_rounded, l(K.modeRoute)),
+        const SizedBox(width: 4),
+        tab(SearchMode.nearby, Icons.my_location_rounded, l(K.modeLive)),
+      ]),
     );
   }
 }
@@ -216,7 +298,11 @@ class _LocationProblemCard extends ConsumerWidget {
                 tone: StatusTone.warning,
                 actions: [
                   ...actions,
-                  FallbackAction(l(K.searchByAreaInstead), () => context.push('/area-search'), icon: Icons.search_rounded),
+                  FallbackAction(l(K.chooseLocationInstead), () => context.push('/pick-location'), icon: Icons.edit_location_alt_outlined),
+                  FallbackAction(l(K.searchByRoute), () {
+                    notifier.setMode(SearchMode.route);
+                    context.push('/route-search');
+                  }, icon: Icons.alt_route_rounded),
                 ],
               ),
               Positioned(
@@ -242,21 +328,45 @@ class _ResultsToolbar extends ConsumerWidget {
     final t = Theme.of(context);
     final s = ref.watch(searchProvider);
     final n = ref.read(searchProvider.notifier);
-    final origin = s.origin!;
-    final loc = origin.location;
+    final origin = s.isNearby ? s.origin : null;
+    final trip = s.isTrip ? s.trip : null;
+    final loc = origin?.location;
     final now = DateTime.now();
-    final title = origin.fromDevice ? l(K.nearYou) : l(K.nearPlace, {'place': origin.label});
+    final String title;
+    final String subtitle;
+    if (trip != null) {
+      final plan = trip.plan;
+      title = l(K.tripSummary, {'from': trip.from.fromDevice ? l(K.yourLocation) : trip.from.label, 'to': trip.to.label});
+      subtitle = [
+        if (plan != null) l(K.routeLength, {'km': plan.distanceKm.toStringAsFixed(0), 'time': f.duration(Duration(minutes: plan.durationMinutes))}),
+        l(K.withinOfRoute, {'km': _km(s.rangeKm)}),
+      ].join(' · ');
+    } else {
+      title = origin!.fromDevice ? l(K.nearYou) : l(K.nearPlace, {'place': origin.label});
+      subtitle = l(K.withinRadius, {'km': _km(s.rangeKm)});
+    }
+    final routes = trip?.routes ?? const <RoutePlan>[];
+    final result = s.result?.value;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 720),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // The search mode stays visible so route results are never
+            // mistaken for nearby ones.
+            Pill(
+              trip != null ? l(K.modeRoute) : l(K.modeLive),
+              icon: trip != null ? Icons.alt_route_rounded : Icons.my_location_rounded,
+              tone: StatusTone.info,
+              dense: true,
+            ),
+            const SizedBox(height: 6),
             Row(children: [
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Semantics(header: true, child: Text(title, style: t.textTheme.titleLarge, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                  Text(l(K.withinRadius, {'km': s.radiusKm.toStringAsFixed(0)}), style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+                  Text(subtitle, style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
                 ]),
               ),
               IconButton(tooltip: l(K.refresh), onPressed: n.refresh, icon: const Icon(Icons.refresh_rounded)),
@@ -281,17 +391,41 @@ class _ResultsToolbar extends ConsumerWidget {
                   tone: StatusTone.warning,
                 ),
               ),
+            if (routes.length > 1) ...[
+              const SizedBox(height: 10),
+              Text(l(K.chooseRoute), style: t.textTheme.labelLarge),
+              const SizedBox(height: 4),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
+                  for (final (i, r) in routes.indexed)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        avatar: const Icon(Icons.alt_route_rounded, size: 16),
+                        label: Text(l(K.routeOption, {
+                          'n': i + 1,
+                          'km': r.distanceKm.toStringAsFixed(0),
+                          'time': f.duration(Duration(minutes: r.durationMinutes)),
+                        })),
+                        selected: trip!.selected == i,
+                        onSelected: (_) => n.selectRoute(i),
+                      ),
+                    ),
+                ]),
+              ),
+            ],
             const SizedBox(height: 10),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(children: [
-                for (final r in SearchState.radiusOptions)
+                for (final r in s.rangeOptions)
                   Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: ChoiceChip(
-                      label: Text(l(K.radiusKm, {'km': r.toStringAsFixed(0)})),
-                      selected: s.radiusKm == r,
-                      onSelected: (_) => n.setRadius(r),
+                      label: Text(l(K.radiusKm, {'km': _km(r)})),
+                      selected: s.rangeKm == r,
+                      onSelected: (_) => n.setRange(r),
                     ),
                   ),
               ]),
@@ -299,7 +433,7 @@ class _ResultsToolbar extends ConsumerWidget {
             const SizedBox(height: 8),
             Row(children: [
               Expanded(
-                child: _SortMenu(sort: s.sort, onChanged: n.setSort),
+                child: _SortMenu(sort: s.effectiveSort, onChanged: n.setSort, onTrip: trip != null),
               ),
               const SizedBox(width: 8),
               Badge(
@@ -319,6 +453,11 @@ class _ResultsToolbar extends ConsumerWidget {
                 ActionChip(avatar: const Icon(Icons.clear_rounded, size: 16), label: Text(l(K.clearFilters)), onPressed: n.clearFilters),
               ]),
             ],
+            if (result != null && result.truncated)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Pill(l(K.moreStationsNote, {'n': result.stations.length, 'total': result.totalFound}), icon: Icons.info_outline_rounded),
+              ),
             if (s.refreshFailed && s.result?.value != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -331,16 +470,21 @@ class _ResultsToolbar extends ConsumerWidget {
   }
 }
 
+/// "5 km", or "0.5 km" for the smallest settings.
+String _km(double km) => km == km.roundToDouble() ? km.toStringAsFixed(0) : km.toStringAsFixed(1);
+
 class _SortMenu extends StatelessWidget {
-  const _SortMenu({required this.sort, required this.onChanged});
+  const _SortMenu({required this.sort, required this.onChanged, required this.onTrip});
   final SortOrder sort;
   final ValueChanged<SortOrder> onChanged;
+  final bool onTrip;
 
   @override
   Widget build(BuildContext context) {
     final l = context.l;
     String label(SortOrder s) => switch (s) {
-          SortOrder.nearest => l(K.sortNearest),
+          SortOrder.bestStop => l(K.sortBestStop),
+          SortOrder.nearest => onTrip ? l(K.sortAlongRoute) : l(K.sortNearest),
           SortOrder.earliestSlot => l(K.sortEarliest),
           SortOrder.lowestFee => l(K.sortLowestFee),
           SortOrder.mostAvailable => l(K.sortMostAvailable),
@@ -349,7 +493,10 @@ class _SortMenu extends StatelessWidget {
       tooltip: l(K.sortBy),
       initialValue: sort,
       onSelected: onChanged,
-      itemBuilder: (_) => [for (final s in SortOrder.values) PopupMenuItem(value: s, child: Text(label(s)))],
+      itemBuilder: (_) => [
+        for (final s in SortOrder.values)
+          if (onTrip || s != SortOrder.bestStop) PopupMenuItem(value: s, child: Text(label(s))),
+      ],
       child: InputDecorator(
         decoration: InputDecoration(
           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -373,14 +520,22 @@ class _ResultsList extends ConsumerWidget {
     final n = ref.read(searchProvider.notifier);
     final result = s.result;
     Widget box(Widget child) => SliverToBoxAdapter(child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: child)));
+    final onTrip = s.isTrip;
+    // Look somewhere else: a different trip, or plan one after a nearby search.
+    final elsewhere = FallbackAction(onTrip ? l(K.changeRoute) : l(K.searchByRoute), () {
+      n.setMode(SearchMode.route);
+      context.push('/route-search');
+    }, icon: Icons.alt_route_rounded);
+    final bigger = s.rangeOptions.where((r) => r > s.rangeKm).toList();
+    final widen = bigger.isEmpty
+        ? null
+        : FallbackAction(l(K.widenTo, {'km': _km(bigger.first)}), () => n.setRange(bigger.first), icon: Icons.zoom_out_map_rounded, primary: true);
 
     if (result == null || (result.isLoading && !result.hasValue)) {
       return box(const SizedBox(height: 420, child: SlowLoading()));
     }
     if (result.hasError && !result.hasValue) {
-      return box(FailureView(error: result.error!, onRetry: n.refresh, compact: true, extra: [
-        FallbackAction(l(K.searchAnotherArea), () => context.push('/area-search'), icon: Icons.search_rounded),
-      ]));
+      return box(FailureView(error: result.error!, onRetry: n.refresh, compact: true, extra: [elsewhere]));
     }
     final data = result.value!;
     if (!data.inServiceArea) {
@@ -389,24 +544,28 @@ class _ResultsList extends ConsumerWidget {
         icon: Icons.public_off_rounded,
         title: l(K.outsideAreaTitle),
         message: l(K.outsideAreaBody),
-        actions: [FallbackAction(l(K.searchAnotherArea), () => context.push('/area-search'), icon: Icons.search_rounded, primary: true)],
+        actions: [FallbackAction(elsewhere.label, elsewhere.onPressed, icon: elsewhere.icon, primary: true)],
       ));
     }
     if (data.stations.isEmpty) {
-      final bigger = SearchState.radiusOptions.where((r) => r > s.radiusKm).toList();
       return box(FallbackView(
         compact: true,
         icon: Icons.ev_station_outlined,
-        title: l(K.noStationsTitle, {'km': s.radiusKm.toStringAsFixed(0)}),
-        message: l(K.noStationsBody),
-        actions: [
-          if (bigger.isNotEmpty)
-            FallbackAction(l(K.widenTo, {'km': bigger.first.toStringAsFixed(0)}), () => n.setRadius(bigger.first), icon: Icons.zoom_out_map_rounded, primary: true),
-          FallbackAction(l(K.searchAnotherArea), () => context.push('/area-search'), icon: Icons.search_rounded),
-        ],
+        title: onTrip ? l(K.noRouteStationsTitle, {'km': _km(s.rangeKm)}) : l(K.noStationsTitle, {'km': _km(s.rangeKm)}),
+        message: onTrip ? l(K.noRouteStationsBody) : l(K.noStationsBody),
+        actions: [?widen, elsewhere],
       ));
     }
     final visible = s.visible(DateTime.now());
+    if (visible.isEmpty && !data.stations.any((x) => s.isOpenFor(x, DateTime.now()))) {
+      return box(FallbackView(
+        compact: true,
+        icon: Icons.nightlight_round,
+        title: l(K.noOpenStationsTitle),
+        message: l(K.noOpenStationsBody),
+        actions: [?widen, elsewhere],
+      ));
+    }
     if (visible.isEmpty) {
       return box(FallbackView(
         compact: true,
@@ -442,7 +601,7 @@ class _ResultsList extends ConsumerWidget {
               for (final (i, st) in visible.indexed)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: Entrance(index: i, child: StationCard(station: st, onOpen: () => context.push('/station/${st.id}'))),
+                  child: Entrance(index: i, child: StationCard(station: st, driving: s.driving[st.id], arriveAt: s.arrival(st, DateTime.now()), onOpen: () => context.push(slotsRoute(st)))),
                 ),
               Padding(
                 padding: const EdgeInsets.only(top: 4),
@@ -452,6 +611,37 @@ class _ResultsList extends ConsumerWidget {
           ),
         ),
       ]),
+    );
+  }
+}
+
+/// A signed-in customer's next booking stays at the top of home, above the
+/// station list, with the time to reach the station.
+class _NextBookingBanner extends ConsumerWidget {
+  const _NextBookingBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final next = ref.watch(nextBookingProvider);
+    if (next == null) return const SizedBox.shrink();
+    final l = context.l;
+    final f = RFmt(l);
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Entrance(
+            child: _ActionCard(
+              icon: Icons.event_available_rounded,
+              title: l(K.upcomingBooking),
+              subtitle: '${next.stationName} · ${f.slot(next.startAt, next.endAt)}\n'
+                  '${l(K.reportByLabel)}: ${l(K.reportByValue, {'time': f.time(next.reportBy), 'mins': next.policy.reportBeforeMinutes})}',
+              onTap: () => context.push('/booking/${next.id}'),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -483,7 +673,8 @@ class _StartSections extends ConsumerWidget {
         _ActionCard(
           icon: Icons.event_available_rounded,
           title: l(K.upcomingBooking),
-          subtitle: '${next.stationName} · ${f.slot(next.startAt, next.endAt)}',
+          subtitle: '${next.stationName} · ${f.slot(next.startAt, next.endAt)}\n'
+              '${l(K.reportByLabel)}: ${l(K.reportByValue, {'time': f.time(next.reportBy), 'mins': next.policy.reportBeforeMinutes})}',
           onTap: () => context.push('/booking/${next.id}'),
         ),
       if (recent.isNotEmpty) ...[
@@ -559,7 +750,7 @@ class _ActionCard extends StatelessWidget {
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(title, style: Theme.of(context).textTheme.titleSmall),
                       const SizedBox(height: 2),
-                      Text(subtitle, style: Theme.of(context).textTheme.bodySmall, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      Text(subtitle, style: Theme.of(context).textTheme.bodySmall, maxLines: 3, overflow: TextOverflow.ellipsis),
                     ]),
                   ),
                   trailing ?? const Icon(Icons.chevron_right_rounded),

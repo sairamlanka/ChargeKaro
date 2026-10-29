@@ -103,6 +103,8 @@ class StationSummary {
     this.state,
     this.postalCode,
     this.distanceKm,
+    this.offRouteKm,
+    this.alongRouteKm,
     this.status = StationStatus.active,
     this.closedUntil,
     this.unavailableReason,
@@ -133,6 +135,8 @@ class StationSummary {
       latitude: j.number('latitude', 0),
       longitude: j.number('longitude', 0),
       distanceKm: j['distance_km'] == null ? null : j.number('distance_km'),
+      offRouteKm: j['off_route_km'] == null ? null : j.number('off_route_km'),
+      alongRouteKm: j['along_route_km'] == null ? null : j.number('along_route_km'),
       status: StationStatus.parse(j.strOrNull('status')),
       closedUntil: j.dateTimeOrNull('closed_until'),
       bookable: j.boolean('bookable'),
@@ -168,6 +172,11 @@ class StationSummary {
 
   /// Straight-line distance from the search centre. Never driving distance.
   final double? distanceKm;
+
+  /// Set in a route search: how far the station is from the route line and
+  /// how far along the route (from the start) it is, both in km.
+  final double? offRouteKm;
+  final double? alongRouteKm;
   final StationStatus status;
   final DateTime? closedUntil;
   final bool bookable;
@@ -185,6 +194,17 @@ class StationSummary {
   final OpenState open;
   final Money bookingFee;
   final NextSlot? nextAvailable;
+
+  /// Whether the station will be open at [t], from its weekly hours (India
+  /// time; the service covers India only). No hours listed means closed,
+  /// the same rule the server uses for "open now".
+  bool openAt(DateTime t) {
+    if (status != StationStatus.active) return false;
+    if (closedUntil != null && closedUntil!.isAfter(t)) return false;
+    final local = t.toUtc().add(const Duration(hours: 5, minutes: 30));
+    final minute = local.hour * 60 + local.minute;
+    return hours.any((h) => h.day == local.weekday && h.opens <= minute && h.closes > minute);
+  }
 
   String get shortAddress => [addressLine1, if (landmark != null && landmark!.isNotEmpty) landmark!, city].join(', ');
   String get fullAddress =>
@@ -261,14 +281,15 @@ class PointInfo {
 @immutable
 class SlotPolicy {
   const SlotPolicy({
-    this.slotMinutes = 30,
+    this.slotMinutes = 15,
     this.minBookingMinutes = 30,
     this.maxBookingMinutes = 120,
     this.minAdvanceMinutes = 15,
     this.maxAdvanceDays = 7,
     this.bufferMinutes = 0,
-    this.arrivalGraceMinutes = 15,
+    this.arrivalGraceMinutes = 5,
     this.earlyCheckinMinutes = 15,
+    this.reportBeforeMinutes = 5,
     this.cancelUntilMinutes = 0,
     this.autoNoShow = true,
   });
@@ -282,8 +303,9 @@ class SlotPolicy {
           minAdvanceMinutes: j.integer('min_advance_minutes', 15),
           maxAdvanceDays: j.integer('max_advance_days', 7),
           bufferMinutes: j.integer('buffer_minutes', 0),
-          arrivalGraceMinutes: j.integer('arrival_grace_minutes', 15),
+          arrivalGraceMinutes: j.integer('arrival_grace_minutes', 5),
           earlyCheckinMinutes: j.integer('early_checkin_minutes', 15),
+          reportBeforeMinutes: j.integer('report_before_minutes', 5),
           cancelUntilMinutes: j.integer('customer_cancel_until_minutes', 0),
           autoNoShow: j.boolean('auto_no_show_enabled', true),
         );
@@ -296,6 +318,9 @@ class SlotPolicy {
   final int bufferMinutes;
   final int arrivalGraceMinutes;
   final int earlyCheckinMinutes;
+
+  /// Customers are asked to be at the station this long before the start.
+  final int reportBeforeMinutes;
   final int cancelUntilMinutes;
   final bool autoNoShow;
 }
@@ -491,25 +516,110 @@ class SlotGrid {
   final UnavailableReason? unavailableReason;
 
   bool get hasAnyStart => points.any((p) => p.cells.any((c) => c.canStart));
+
+  /// Points that have [connector] (wire value), or all points for null.
+  List<PointSlots> pointsFor(String? connector) => connector == null
+      ? points
+      : points.where((p) => p.point.connectors.any((c) => c.type.wire == connector)).toList();
+
+  /// Connector types offered by bookable points, for the connector picker.
+  List<ConnectorType> get connectorTypes {
+    final seen = <ConnectorType>{};
+    for (final p in points.where((p) => p.point.bookable)) {
+      for (final c in p.point.connectors) {
+        seen.add(c.type);
+      }
+    }
+    return seen.toList();
+  }
+
+  /// The station as one grid: for each start time, how many compatible
+  /// points could take a booking of [minutes] starting then. The server
+  /// assigns the actual point when the hold is made.
+  List<StationCell> stationCells(int minutes, {String? connector}) {
+    final eligible = pointsFor(connector);
+    final bookable = eligible.where((p) => p.point.bookable).toList();
+    final starts = <DateTime>{for (final p in eligible) for (final c in p.cells) c.start}.toList()..sort();
+    return [
+      for (final t in starts)
+        () {
+          final free = bookable.where((p) => p.fits(t, minutes, slotMinutes)).length;
+          final states = [for (final p in eligible) ?p.cells.where((c) => c.start == t).firstOrNull?.state];
+          // A point is free to start here, just not for this long (the next
+          // booking, a block or closing time comes first): not "full".
+          final tooLong = free == 0 &&
+              bookable.any((p) => p.cells.any((c) => c.start == t && c.canStart && c.state == SlotState.available));
+          return StationCell(t, free, bookable.length, free > 0 ? SlotState.available : _whyNone(states, bookable.isNotEmpty),
+              tooLong: tooLong);
+        }(),
+    ];
+  }
+
+  static SlotState _whyNone(List<SlotState> states, bool anyBookable) {
+    bool all(SlotState s) => states.isNotEmpty && states.every((x) => x == s);
+    if (all(SlotState.past)) return SlotState.past;
+    if (all(SlotState.closed)) return SlotState.closed;
+    if (states.contains(SlotState.tooSoon)) return SlotState.tooSoon;
+    if (states.contains(SlotState.tooFar)) return SlotState.tooFar;
+    if (!anyBookable) return SlotState.unavailable;
+    if (states.contains(SlotState.booked) || states.contains(SlotState.reserved)) return SlotState.booked;
+    if (states.contains(SlotState.blocked)) return SlotState.blocked;
+    // Free cells exist but the chosen length does not fit before the next
+    // booking or closing time.
+    if (states.contains(SlotState.available)) return SlotState.booked;
+    return SlotState.unavailable;
+  }
+}
+
+/// One start time at a station: [free] of [total] compatible points can take
+/// the chosen length. [state] is available when [free] > 0, otherwise why not
+/// (booked means every point is taken: the station is full).
+@immutable
+class StationCell {
+  const StationCell(this.start, this.free, this.total, this.state, {this.tooLong = false});
+  final DateTime start;
+  final int free;
+  final int total;
+  final SlotState state;
+
+  /// No point can take the chosen length from here, but a shorter one fits.
+  final bool tooLong;
+
+  bool get canBook => free > 0;
+  bool get full => state == SlotState.booked && !tooLong;
 }
 
 @immutable
 class SearchResult {
-  const SearchResult({required this.inServiceArea, required this.radiusKm, required this.stations, required this.generatedAt});
+  const SearchResult({required this.inServiceArea, required this.radiusKm, required this.stations, required this.generatedAt, this.totalFound});
   factory SearchResult.fromJson(Object? json) {
     final j = Json.of(json);
+    // One card per station, whatever the server sends.
+    final seen = <String>{};
+    final stations = [
+      for (final s in (j['stations'] as List? ?? const []).map(StationSummary.fromJson))
+        if (seen.add(s.id)) s,
+    ];
     return SearchResult(
       inServiceArea: j.boolean('in_service_area', true),
-      radiusKm: j.number('radius_km', 5),
-      stations: (j['stations'] as List? ?? const []).map(StationSummary.fromJson).toList(),
+      radiusKm: j['corridor_km'] != null ? j.number('corridor_km') : j.number('radius_km', 5),
+      stations: stations,
       generatedAt: j.dateTimeOrNull('generated_at') ?? DateTime.now().toUtc(),
+      totalFound: j.intOrNull('total_found'),
     );
   }
 
   final bool inServiceArea;
+
+  /// Search radius, or for a route search the distance from the route.
   final double radiusKm;
   final List<StationSummary> stations;
   final DateTime generatedAt;
+
+  /// Route search: every match before the server's limit was applied.
+  final int? totalFound;
+
+  bool get truncated => totalFound != null && totalFound! > stations.length;
 }
 
 @immutable
@@ -521,7 +631,7 @@ class AreaMatch {
         latitude: j.number('latitude', 0),
         longitude: j.number('longitude', 0),
         stationCount: j.intOrNull('station_count'),
-        fromProvider: j.strOrNull('source') == 'google',
+        fromProvider: j.strOrNull('source') == 'osm',
       );
 
   final String label;
@@ -530,6 +640,15 @@ class AreaMatch {
   final double longitude;
   final int? stationCount;
   final bool fromProvider;
+
+  Map<String, dynamic> toJson() => {
+        'label': label,
+        'secondary': secondary,
+        'latitude': latitude,
+        'longitude': longitude,
+        if (stationCount != null) 'station_count': stationCount,
+        if (fromProvider) 'source': 'osm',
+      };
 }
 
 @immutable
@@ -540,6 +659,92 @@ class AreaSearchOutcome {
   /// False when the map-provider search is not configured or failed; results
   /// then come only from localities that have stations.
   final bool providerAvailable;
+}
+
+/// Along My Route: a station within this distance (km) of the route line is
+/// on the route; further away it needs a detour.
+const onRouteKm = 0.5;
+
+/// One end of a trip: a place the customer picked, or their device location.
+@immutable
+class TripPlace {
+  const TripPlace({required this.label, required this.latitude, required this.longitude, this.fromDevice = false});
+  factory TripPlace.fromArea(AreaMatch m) => TripPlace(label: m.label, latitude: m.latitude, longitude: m.longitude);
+  factory TripPlace.fromJson(Map<String, dynamic> j) => TripPlace(
+        label: j['label'] as String? ?? '',
+        latitude: (j['lat'] as num).toDouble(),
+        longitude: (j['lng'] as num).toDouble(),
+        fromDevice: j['device'] as bool? ?? false,
+      );
+
+  final String label;
+  final double latitude;
+  final double longitude;
+  final bool fromDevice;
+
+  Map<String, dynamic> toJson() => {'label': label, 'lat': latitude, 'lng': longitude, 'device': fromDevice};
+
+  @override
+  bool operator ==(Object other) => other is TripPlace && other.label == label && other.latitude == latitude && other.longitude == longitude && other.fromDevice == fromDevice;
+  @override
+  int get hashCode => Object.hash(label, latitude, longitude, fromDevice);
+}
+
+/// A driving route from the route-plan function (OpenStreetMap routing).
+@immutable
+class RoutePlan {
+  const RoutePlan({required this.distanceKm, required this.durationMinutes, required this.path});
+
+  /// The engine's route first, then its alternatives (at most three in all).
+  static List<RoutePlan> listFromJson(Object? json) {
+    final j = Json.of(json);
+    final routes = j['routes'];
+    if (routes is List && routes.isNotEmpty) return routes.map(RoutePlan.fromJson).toList();
+    return [RoutePlan.fromJson(json)];
+  }
+
+  factory RoutePlan.fromJson(Object? json) {
+    final j = Json.of(json);
+    return RoutePlan(
+      distanceKm: j.number('distance_km', 0),
+      durationMinutes: j.integer('duration_minutes', 0),
+      path: [
+        for (final p in j['path'] as List? ?? const [])
+          if (p is List && p.length == 2) ((p[0] as num).toDouble(), (p[1] as num).toDouble()),
+      ],
+    );
+  }
+
+  final double distanceKm;
+  final int durationMinutes;
+
+  /// (lat, lng) points from start to destination, already simplified.
+  final List<(double, double)> path;
+
+  List<List<double>> get pathJson => [for (final (lat, lng) in path) [lat, lng]];
+}
+
+/// Driving distance and time by road (route-plan function).
+@immutable
+class DrivingDistance {
+  const DrivingDistance({required this.distanceKm, required this.durationMinutes});
+  static DrivingDistance? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final j = Json.of(json);
+    return DrivingDistance(distanceKm: j.number('distance_km', 0), durationMinutes: j.integer('duration_minutes', 0));
+  }
+
+  final double distanceKm;
+  final int durationMinutes;
+}
+
+/// What a stop at a station adds to a trip: the route through the station
+/// compared with the route without it.
+@immutable
+class Detour {
+  const Detour({required this.extraKm, required this.extraMinutes});
+  final double extraKm;
+  final int extraMinutes;
 }
 
 @immutable
@@ -575,14 +780,22 @@ class BookingTerms {
 
 @immutable
 class SlotCheck {
-  const SlotCheck({required this.available, required this.fee, this.reason});
+  const SlotCheck({required this.available, required this.fee, this.reason, this.freePoints = 0, this.totalPoints = 0});
   factory SlotCheck.fromJson(Object? json) {
     final j = Json.of(json);
-    return SlotCheck(available: j.boolean('available'), reason: j.strOrNull('reason'), fee: Money(j.integer('booking_fee_paise', 0)));
+    return SlotCheck(
+      available: j.boolean('available'),
+      reason: j.strOrNull('reason'),
+      fee: Money(j.integer('booking_fee_paise', 0)),
+      freePoints: j.integer('free_points', 0),
+      totalPoints: j.integer('total_points', 0),
+    );
   }
   final bool available;
   final String? reason;
   final Money fee;
+  final int freePoints;
+  final int totalPoints;
 }
 
 // ---------------------------------------------------------------------------
@@ -838,9 +1051,12 @@ class CustomerBooking {
 
   bool isUpcomingAt(DateTime now) => endAt.isAfter(now) && (status == BookingStatus.confirmed || status == BookingStatus.paymentPending);
 
-  /// Arrival window [start − early, start + grace] from the station policy.
+  /// Check-in opens [start − early]; the point is held until [start + grace].
   DateTime get arrivalOpensAt => startAt.subtract(Duration(minutes: policy.earlyCheckinMinutes));
   DateTime get arrivalClosesAt => startAt.add(Duration(minutes: policy.arrivalGraceMinutes));
+
+  /// When the customer is asked to be at the station.
+  DateTime get reportBy => startAt.subtract(Duration(minutes: policy.reportBeforeMinutes));
 }
 
 @immutable

@@ -20,6 +20,16 @@ Future<void> openDirections(BuildContext context, double lat, double lng) async 
   if (!ok) messenger.showSnackBar(SnackBar(content: Text(msg)));
 }
 
+/// Directions to [stopLat]/[stopLng], then on to the trip's destination, so
+/// the driver can resume the journey after charging.
+Future<void> openDirectionsVia(BuildContext context, double stopLat, double stopLng, double destLat, double destLng) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final msg = context.l(K.directionsFailed);
+  final uri = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$destLat,$destLng&waypoints=$stopLat,$stopLng');
+  final ok = await launchUrl(uri, mode: LaunchMode.externalApplication).catchError((_) => false);
+  if (!ok) messenger.showSnackBar(SnackBar(content: Text(msg)));
+}
+
 Future<void> callPhone(BuildContext context, String phone) async {
   final messenger = ScaffoldMessenger.of(context);
   final msg = context.l(K.callFailed, {'phone': phone});
@@ -118,10 +128,16 @@ class ConnectorChips extends StatelessWidget {
 
 /// The search-result card for one station.
 class StationCard extends StatelessWidget {
-  const StationCard({super.key, required this.station, required this.onOpen, this.compact = false});
+  const StationCard({super.key, required this.station, required this.onOpen, this.compact = false, this.driving, this.arriveAt});
   final StationSummary station;
   final VoidCallback onOpen;
   final bool compact;
+
+  /// Near Me: distance by road, when the routing service gave one.
+  final DrivingDistance? driving;
+
+  /// Along My Route: when the driver should get there, leaving now.
+  final DateTime? arriveAt;
 
   @override
   Widget build(BuildContext context) {
@@ -148,17 +164,40 @@ class StationCard extends StatelessWidget {
                     Text(s.shortAddress, style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant), maxLines: 2, overflow: TextOverflow.ellipsis),
                   ]),
                 ),
-                if (s.distanceKm != null) ...[
+                if (s.alongRouteKm != null) ...[
+                  // Route search: where on the trip, and the detour off it.
+                  const SizedBox(width: 8),
+                  Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Text(f.distance(s.alongRouteKm!), style: t.textTheme.titleSmall?.copyWith(color: t.colorScheme.primary, fontWeight: FontWeight.w800)),
+                    Text(l(K.fromStart), style: t.textTheme.labelSmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+                    if (s.offRouteKm != null && s.offRouteKm! > onRouteKm)
+                      Text(l(K.offRoute, {'d': f.distance(s.offRouteKm!)}), style: t.textTheme.labelSmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+                  ]),
+                ] else if (s.distanceKm != null) ...[
                   const SizedBox(width: 8),
                   Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                     Text(f.distance(s.distanceKm!), style: t.textTheme.titleSmall?.copyWith(color: t.colorScheme.primary, fontWeight: FontWeight.w800)),
                     Text(l(K.straightLine), style: t.textTheme.labelSmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+                    if (driving != null)
+                      Text(
+                        l(K.drivingDistance, {'d': f.distance(driving!.distanceKm), 'time': f.duration(Duration(minutes: driving!.durationMinutes))}),
+                        style: t.textTheme.labelSmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                      ),
                   ]),
                 ],
               ]),
               const SizedBox(height: 12),
               Wrap(spacing: 6, runSpacing: 6, children: [
                 StationStatusPill(s),
+                // Along My Route: right on the road, or a detour (there and
+                // back, so about twice the distance from the route).
+                if (s.offRouteKm != null)
+                  s.offRouteKm! <= onRouteKm
+                      ? Pill(l(K.onRoute), icon: Icons.check_circle_outline_rounded, tone: StatusTone.success, dense: true)
+                      : Pill(l(K.detourAbout, {'d': f.distance(s.offRouteKm! * 2)}), icon: Icons.turn_right_rounded, tone: StatusTone.warning, dense: true),
+                if (arriveAt != null) Pill(l(K.reachAbout, {'time': f.time(arriveAt!)}), icon: Icons.schedule_rounded, tone: StatusTone.info, dense: true),
+                if (arriveAt != null && !s.open.openNow && s.openAt(arriveAt!))
+                  Pill(l(K.openWhenYouReach), icon: Icons.lock_clock_rounded, tone: StatusTone.success, dense: true),
                 if (s.isDemo) Pill(l(K.demoStation), tone: StatusTone.warning, dense: true),
               ]),
               const SizedBox(height: 10),
@@ -166,12 +205,6 @@ class StationCard extends StatelessWidget {
               if (!compact) ...[
                 const SizedBox(height: 10),
                 PointCountsLine(s.points, now: now),
-                const SizedBox(height: 10),
-                Row(children: [
-                  Icon(Icons.schedule_rounded, size: 16, color: t.colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 6),
-                  Expanded(child: Text(hoursSummary(l, s, now), style: t.textTheme.bodySmall)),
-                ]),
               ],
               const Divider(height: 22),
               Row(children: [
@@ -183,10 +216,6 @@ class StationCard extends StatelessWidget {
                         ])
                       : Text(s.bookable ? l(K.noFreeSlot48h) : l(K.notBookableNow), style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
                 ),
-                Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  Text(l(K.bookingFee), style: t.textTheme.labelSmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
-                  Text(s.bookingFee.isZero ? l(K.free) : f.money(s.bookingFee), style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-                ]),
               ]),
               if (!compact) ...[
                 const SizedBox(height: 12),
@@ -214,14 +243,6 @@ class StationCard extends StatelessWidget {
       ),
     );
   }
-}
-
-String hoursSummary(L l, StationSummary s, DateTime now) {
-  final f = RFmt(l);
-  if (s.is24x7) return l(K.open24h);
-  if (s.open.openNow && s.open.closesMinute != null) return l(K.openUntil, {'time': f.minutesOfDay(s.open.closesMinute!)});
-  if (s.open.opensNextMinute != null) return l(K.opensAt, {'time': f.minutesOfDay(s.open.opensNextMinute!)});
-  return s.hours.isEmpty ? l(K.hoursUnknown) : l(K.closedToday);
 }
 
 class _StationAvatar extends StatelessWidget {
@@ -308,16 +329,16 @@ class _ConnectivityBannerState extends ConsumerState<ConnectivityBanner> {
   }
 }
 
-/// Booking-flow progress: Slot → Details → Verify → Review → Pay.
+/// Booking-flow progress: Slot → Details → Verify → Pay.
 class StepProgress extends StatelessWidget {
-  const StepProgress({super.key, required this.step, this.total = 5});
+  const StepProgress({super.key, required this.step, this.total = 4});
   final int step;
   final int total;
 
   @override
   Widget build(BuildContext context) {
     final l = context.l;
-    final labels = [l(K.stepSlot), l(K.stepDetails), l(K.stepVerify), l(K.stepReview), l(K.stepPay)];
+    final labels = [l(K.stepSlot), l(K.stepDetails), l(K.stepVerify), l(K.stepPay)];
     return Semantics(
       label: l(K.stepOf, {'n': step + 1, 'total': total, 'name': labels[step]}),
       excludeSemantics: true,
@@ -498,10 +519,10 @@ class AuroraHero extends StatelessWidget {
       ]);
 }
 
-/// Slot picker for a station, opened on the day of its next free slot.
+/// Station page (slot picker first), opened on the day of its next free slot.
 String slotsRoute(StationSummary s) {
   final next = s.nextAvailable;
-  if (next == null) return '/station/${s.id}/slots';
+  if (next == null) return '/station/${s.id}';
   final d = RFmt.istDate(next.startAt);
-  return '/station/${s.id}/slots?date=${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  return '/station/${s.id}?date=${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:retailer_app/data/checkout/checkout.dart';
 import 'package:retailer_app/data/local_store.dart';
 import 'package:retailer_app/data/location_service.dart';
@@ -30,10 +31,13 @@ void main() {
       ], child: const ExploreScreen()));
       await settle(t);
       expect(find.text('Find a charger near you'), findsOneWidget);
-      await t.tap(find.text('Use my current location').first);
+      await t.tap(find.text('Near Me').first);
       await settle(t);
       expect(find.text('Location not allowed'), findsOneWidget);
-      expect(find.text('Search by area instead'), findsWidgets);
+      // Denied location: retry, pick a place by hand, or search a route.
+      expect(find.text('Allow location'), findsWidgets);
+      expect(find.text('Choose a location instead'), findsWidgets);
+      expect(find.text('Search along my route'), findsWidgets);
     });
 
     testWidgets('renders in Telugu', (t) async {
@@ -70,13 +74,15 @@ void main() {
       usePhone(t);
       await t.pumpWidget(harness(store: store, overrides: [retailRepositoryProvider.overrideWithValue(repo)], router: router()));
       await settle(t);
-      for (final label in ['Free', 'Taken', 'On hold', 'Blocked', 'Unavailable']) {
+      for (final label in ['Free', 'Full', 'Blocked', 'Unavailable']) {
         expect(find.text(label), findsWidgets, reason: label);
       }
-      // Tapping a taken time explains why instead of doing nothing.
-      await t.tap(find.bySemanticsLabel(RegExp(r', Taken$')).first);
+      // No point to pick: the station assigns one.
+      expect(find.textContaining('A free charging point is assigned'), findsOneWidget);
+      // Tapping a full time explains why instead of doing nothing.
+      await t.tap(find.bySemanticsLabel(RegExp(r', Full$')).first);
       await t.pump();
-      expect(find.text('Someone has already booked this time.'), findsOneWidget);
+      expect(find.textContaining('Every charging point is booked at this time'), findsOneWidget);
     });
 
     testWidgets('choosing a free time saves the draft and continues', (t) async {
@@ -84,13 +90,16 @@ void main() {
       await t.pumpWidget(harness(store: store, overrides: [retailRepositoryProvider.overrideWithValue(repo)], router: router()));
       await settle(t);
       expect(find.text('Continue'), findsNothing);
-      await t.tap(find.bySemanticsLabel(RegExp(r', Free$')).first);
+      await t.tap(find.bySemanticsLabel(RegExp(r', 1 of 1 free$')).first);
       await t.pump();
+      // Only the chosen start is marked, and it says when the booking ends.
+      expect(find.textContaining('Until '), findsOneWidget);
+      expect(find.text('Selected'), findsNothing);
       await t.tap(find.text('Continue'));
       await settle(t);
       expect(find.text('details page'), findsOneWidget);
       final draft = BookingDraft.fromJson(store.draft()!);
-      expect(draft.pointId, 'p1');
+      expect(draft.connector, isNull);
       expect(draft.start, from.add(const Duration(minutes: 60)));
       expect(draft.displayedFeePaise, 1200);
     });
@@ -127,15 +136,50 @@ void main() {
       await t.pumpWidget(harness(store: store, overrides: [retailRepositoryProvider.overrideWithValue(repo), checkoutProvider.overrideWithValue(checkout)], router: router()));
       await settle(t);
       expect(find.textContaining('left to pay'), findsOneWidget);
+      // Pay stays disabled until the no-refund terms are accepted.
+      await t.dragUntilVisible(find.text('Pay ₹12.00'), find.byType(ListView).first, const Offset(0, -200));
+      expect(t.widget<GradientButton>(find.ancestor(of: find.text('Pay ₹12.00'), matching: find.byType(GradientButton))).onPressed, isNull);
+      await tapVisible(t, find.byType(Checkbox));
+      await t.pump();
       await tapVisible(t, find.text('Pay ₹12.00', skipOffstage: false));
       await t.pump();
       await t.pump();
       expect(checkout.opened, 1);
-      expect(find.textContaining('Please don\'t pay again', skipOffstage: false), findsOneWidget);
+      await t.dragUntilVisible(find.textContaining('Please don\'t pay again'), find.byType(ListView).first, const Offset(0, 200));
+      expect(find.textContaining('Please don\'t pay again'), findsOneWidget);
       // Polling gives up after about a minute; the outcome is still "not paid".
       await settle(t, const Duration(seconds: 2), 40);
       expect(find.textContaining('Payment was not completed', skipOffstage: false), findsOneWidget);
       expect(find.textContaining('done'), findsNothing);
+    });
+
+    testWidgets('development test payments: failure then success, both read back from the server', (t) async {
+      usePhone(t);
+      var state = 'pending';
+      when(() => repo.booking('b1')).thenAnswer((_) async => CustomerBooking.fromJson(state == 'paid'
+          ? bookingJson()
+          : bookingJson(status: 'payment_pending', paymentStatus: state, holdExpiresAt: DateTime.now().toUtc().add(const Duration(minutes: 9)))));
+      when(() => repo.devMockPayment('b1', success: any(named: 'success'))).thenAnswer((i) async {
+        state = i.namedArguments[#success] == true ? 'paid' : 'failed';
+      });
+      await t.pumpWidget(harness(store: store, mockPayments: true, overrides: [retailRepositoryProvider.overrideWithValue(repo)], router: router()));
+      await settle(t);
+      await t.dragUntilVisible(find.byType(Checkbox), find.byType(ListView).first, const Offset(0, -200));
+      await tapVisible(t, find.byType(Checkbox));
+      await t.pump();
+      await tapVisible(t, find.text('Pay ₹12.00'));
+      await settle(t);
+      await t.tap(find.text('Payment fails'));
+      await settle(t);
+      verify(() => repo.devMockPayment('b1', success: false)).called(1);
+      verifyNever(() => repo.createOrder(any()));
+      expect(find.textContaining('didn\'t go through', skipOffstage: false), findsWidgets);
+      await t.dragUntilVisible(find.text('Try payment again'), find.byType(ListView).first, const Offset(0, -200));
+      await tapVisible(t, find.text('Try payment again'));
+      await settle(t);
+      await t.tap(find.text('Payment succeeds'));
+      await settle(t);
+      expect(find.text('done b1'), findsOneWidget);
     });
 
     testWidgets('a successful checkout is confirmed by the server before showing success', (t) async {
@@ -152,6 +196,11 @@ void main() {
       final checkout = FakeCheckout(const CheckoutSucceeded(paymentId: 'pay1', orderId: 'o1', signature: 'sig'));
       await t.pumpWidget(harness(store: store, overrides: [retailRepositoryProvider.overrideWithValue(repo), checkoutProvider.overrideWithValue(checkout)], router: router()));
       await settle(t);
+      // Pay stays disabled until the no-refund terms are accepted.
+      await t.dragUntilVisible(find.text('Pay ₹12.00'), find.byType(ListView).first, const Offset(0, -200));
+      expect(t.widget<GradientButton>(find.ancestor(of: find.text('Pay ₹12.00'), matching: find.byType(GradientButton))).onPressed, isNull);
+      await tapVisible(t, find.byType(Checkbox));
+      await t.pump();
       await tapVisible(t, find.text('Pay ₹12.00', skipOffstage: false));
       await settle(t);
       verify(() => repo.verifyPayment(orderId: 'o1', paymentId: 'pay1', signature: 'sig')).called(1);

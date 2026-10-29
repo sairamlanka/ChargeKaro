@@ -9,7 +9,6 @@ import 'state/providers.dart';
 import 'ui/booking/confirmation_screen.dart';
 import 'ui/booking/details_screen.dart';
 import 'ui/booking/payment_screen.dart';
-import 'ui/booking/review_screen.dart';
 import 'ui/booking/verify_screen.dart';
 import 'ui/bookings/booking_detail_screen.dart';
 import 'ui/bookings/bookings_screen.dart';
@@ -17,12 +16,12 @@ import 'ui/common/fallback.dart';
 import 'ui/common/widgets.dart';
 import 'ui/explore/area_search_screen.dart';
 import 'ui/explore/explore_screen.dart';
+import 'ui/explore/route_search_screen.dart';
 import 'ui/profile/help_screen.dart';
 import 'ui/profile/profile_screen.dart';
 import 'ui/shell.dart';
 import 'ui/station/alternatives_screen.dart';
 import 'ui/station/slots_screen.dart';
-import 'ui/station/station_screen.dart';
 
 /// Guests can open every discovery screen. Screens that need an account
 /// show their own sign-in prompt instead of redirecting, so a link to a
@@ -40,12 +39,17 @@ GoRouter buildRouter() => GoRouter(
             StatefulShellBranch(routes: [GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen())]),
           ],
         ),
-        GoRoute(path: '/area-search', builder: (_, _) => const AreaSearchScreen()),
-        GoRoute(path: '/station/:id', builder: (_, s) => StationScreen(id: s.pathParameters['id']!)),
+        // Along My Route: source and destination.
+        GoRoute(path: '/route-search', builder: (_, _) => const RouteSearchScreen()),
+        // Near Me with a place picked by hand, when location can't be used.
+        GoRoute(path: '/pick-location', builder: (_, _) => const AreaSearchScreen()),
+        GoRoute(path: '/area-search', redirect: (_, _) => '/pick-location'),
+        // The station page opens on the slot picker; station details are below it.
         GoRoute(
-          path: '/station/:id/slots',
+          path: '/station/:id',
           builder: (_, s) => SlotsScreen(stationId: s.pathParameters['id']!, initialDate: DateTime.tryParse(s.uri.queryParameters['date'] ?? '')),
         ),
+        GoRoute(path: '/station/:id/slots', redirect: (_, s) => s.uri.toString().replaceFirst('/slots', '')),
         GoRoute(
           path: '/alternatives',
           builder: (_, s) {
@@ -55,7 +59,6 @@ GoRouter buildRouter() => GoRouter(
         ),
         GoRoute(path: '/book/details', builder: (_, _) => const DetailsScreen()),
         GoRoute(path: '/book/verify', builder: (_, _) => const VerifyScreen()),
-        GoRoute(path: '/book/review', builder: (_, _) => const ReviewScreen()),
         GoRoute(path: '/book/pay/:id', builder: (_, s) => PaymentScreen(bookingId: s.pathParameters['id']!)),
         GoRoute(path: '/book/done/:id', builder: (_, s) => ConfirmationScreen(bookingId: s.pathParameters['id']!)),
         GoRoute(path: '/booking/:id', builder: (_, s) => BookingDetailScreen(bookingId: s.pathParameters['id']!)),

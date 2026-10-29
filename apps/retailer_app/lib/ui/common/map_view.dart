@@ -14,8 +14,9 @@ import 'widgets.dart';
 const _tileUrl = String.fromEnvironment('MAP_TILE_URL', defaultValue: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png');
 const _tileAttribution = String.fromEnvironment('MAP_TILE_ATTRIBUTION', defaultValue: '© OpenStreetMap contributors');
 
-/// Stations around the search centre with the search radius drawn. If tiles
-/// cannot load, says so and offers the list instead of showing a blank map.
+/// Stations around the search centre with the search radius drawn, or for a
+/// trip, the route line with its start and end. If tiles cannot load, says
+/// so and offers the list instead of showing a blank map.
 class StationsMap extends StatefulWidget {
   const StationsMap({
     super.key,
@@ -26,6 +27,8 @@ class StationsMap extends StatefulWidget {
     required this.onOpen,
     required this.onShowList,
     this.showUserDot = false,
+    this.route,
+    this.driving = const {},
   });
 
   final List<StationSummary> stations;
@@ -35,6 +38,12 @@ class StationsMap extends StatefulWidget {
   final ValueChanged<StationSummary> onOpen;
   final VoidCallback onShowList;
   final bool showUserDot;
+
+  /// (lat, lng) points of the trip's route; replaces the radius circle.
+  final List<(double, double)>? route;
+
+  /// Near Me: driving distance by station id, when known.
+  final Map<String, DrivingDistance> driving;
 
   @override
   State<StationsMap> createState() => _StationsMapState();
@@ -59,6 +68,7 @@ class _StationsMapState extends State<StationsMap> {
     final l = context.l;
     final scheme = Theme.of(context).colorScheme;
     final center = LatLng(widget.centerLat, widget.centerLng);
+    final route = widget.route == null || widget.route!.length < 2 ? null : [for (final (lat, lng) in widget.route!) LatLng(lat, lng)];
     return Stack(children: [
       Semantics(
         label: l(K.mapSemantics, {'n': widget.stations.length}),
@@ -66,6 +76,7 @@ class _StationsMapState extends State<StationsMap> {
           options: MapOptions(
             initialCenter: center,
             initialZoom: _zoom,
+            initialCameraFit: route == null ? null : CameraFit.coordinates(coordinates: route, padding: const EdgeInsets.fromLTRB(40, 60, 40, 60)),
             onTap: (_, _) => setState(() => _selected = null),
             interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
           ),
@@ -83,25 +94,41 @@ class _StationsMapState extends State<StationsMap> {
                 if (_tilesFailing) WidgetsBinding.instance.addPostFrameCallback((_) => mounted ? setState(() {}) : null);
               },
             ),
-            CircleLayer(circles: [
-              CircleMarker(
-                point: center,
-                radius: widget.radiusKm * 1000,
-                useRadiusInMeter: true,
-                color: Brand.green.withValues(alpha: 0.08),
-                borderColor: Brand.green.withValues(alpha: 0.6),
-                borderStrokeWidth: 1.5,
-              ),
-            ]),
+            if (route != null)
+              PolylineLayer(polylines: [
+                Polyline(points: route, strokeWidth: 7, color: Colors.white.withValues(alpha: 0.9)),
+                Polyline(points: route, strokeWidth: 4.5, color: Brand.ocean),
+              ]),
+            if (route == null)
+              CircleLayer(circles: [
+                CircleMarker(
+                  point: center,
+                  radius: widget.radiusKm * 1000,
+                  useRadiusInMeter: true,
+                  color: Brand.green.withValues(alpha: 0.08),
+                  borderColor: Brand.green.withValues(alpha: 0.6),
+                  borderStrokeWidth: 1.5,
+                ),
+              ]),
             MarkerLayer(markers: [
               Marker(
-                point: center,
+                point: route?.first ?? center,
                 width: 28,
                 height: 28,
                 child: widget.showUserDot
                     ? PulseDot(color: Brand.ocean, size: 10)
-                    : Icon(Icons.location_searching_rounded, color: Brand.ocean, size: 24, semanticLabel: l(K.searchCentre)),
+                    : route != null
+                        ? Icon(Icons.trip_origin_rounded, color: Brand.green, size: 22, semanticLabel: l(K.tripFrom))
+                        : Icon(Icons.location_searching_rounded, color: Brand.ocean, size: 24, semanticLabel: l(K.searchCentre)),
               ),
+              if (route != null)
+                Marker(
+                  point: route.last,
+                  width: 34,
+                  height: 34,
+                  alignment: Alignment.topCenter,
+                  child: Icon(Icons.place_rounded, color: Brand.ocean, size: 34, semanticLabel: l(K.tripTo)),
+                ),
               for (final s in widget.stations)
                 Marker(
                   point: LatLng(s.latitude, s.longitude),
@@ -140,7 +167,7 @@ class _StationsMapState extends State<StationsMap> {
         bottom: _selected == null ? -320 : 12,
         child: _selected == null
             ? const SizedBox.shrink()
-            : StationCard(station: _selected!, compact: true, onOpen: () => widget.onOpen(_selected!)),
+            : StationCard(station: _selected!, compact: true, driving: widget.driving[_selected!.id], onOpen: () => widget.onOpen(_selected!)),
       ),
     ]);
   }

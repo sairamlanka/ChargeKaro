@@ -23,6 +23,13 @@ final checkoutProvider = Provider<PaymentCheckout>((ref) {
   return c;
 });
 
+/// Development builds without Razorpay keys pay through a test sheet that
+/// simulates success or failure on the local server
+/// (supabase/dev/dev_payments.sql). Pass RAZORPAY_ENABLED=true to use the
+/// real Razorpay checkout in development. Production always uses Razorpay.
+final mockPaymentsProvider = Provider<bool>((ref) =>
+    !const bool.fromEnvironment('RAZORPAY_ENABLED') && ref.watch(appConfigProvider).environment == 'development');
+
 /// Build number of this app, compared with the server's minimum.
 const appBuildNumber = int.fromEnvironment('APP_BUILD', defaultValue: 1);
 
@@ -57,9 +64,10 @@ final profileProvider = FutureProvider<CustomerProfile?>((ref) async {
 final termsProvider = FutureProvider<BookingTerms>((ref) => ref.watch(retailRepositoryProvider).terms());
 
 final stationProvider = FutureProvider.autoDispose.family<StationDetail, String>((ref, id) {
-  // Distance is measured from the current search centre, read once.
-  final origin = ref.read(searchProvider).origin;
-  return ref.watch(retailRepositoryProvider).station(id, lat: origin?.latitude, lng: origin?.longitude);
+  // Distance is measured from the search centre (or the start of the trip),
+  // read once.
+  final anchor = ref.read(searchProvider).anchor;
+  return ref.watch(retailRepositoryProvider).station(id, lat: anchor?.latitude, lng: anchor?.longitude);
 });
 
 typedef SlotQuery = ({String stationId, DateTime date});

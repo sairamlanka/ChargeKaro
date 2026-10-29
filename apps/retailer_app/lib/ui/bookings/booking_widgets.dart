@@ -139,10 +139,21 @@ class ArrivalCard extends StatelessWidget {
     return SectionCard(
       title: l(K.arrivalTitle),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        InfoLine(icon: Icons.login_rounded, label: l(K.arrivalWindow), value: f.timeRange(b.arrivalOpensAt, b.arrivalClosesAt), emphasize: true),
+        InfoLine(
+          icon: Icons.flag_rounded,
+          label: l(K.reportByLabel),
+          value: l(K.reportByValue, {'time': f.time(b.reportBy), 'mins': b.policy.reportBeforeMinutes}),
+          emphasize: true,
+        ),
+        InfoLine(icon: Icons.timer_outlined, label: l(K.pointHeldUntil), value: f.time(b.arrivalClosesAt)),
         const SizedBox(height: 6),
         Pill(text, tone: tone, icon: Icons.directions_walk_rounded),
         const SizedBox(height: 10),
+        Text(
+          l(K.arrivalRuleNotice, {'before': b.policy.reportBeforeMinutes, 'grace': b.policy.arrivalGraceMinutes}),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.5),
+        ),
+        const SizedBox(height: 6),
         Text(l(K.arrivalSteps), style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.5)),
       ]),
     );
