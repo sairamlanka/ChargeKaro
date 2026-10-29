@@ -31,6 +31,10 @@ void main() {
   }
 
   const demoBusiness = '00000000-0000-4000-b000-000000000001';
+  // The seeded live (Koramangala) and draft (Indiranagar) stations; seed.sql
+  // also adds route-test stations to the same business.
+  const liveStation = '00000000-0000-4000-c000-000000000001';
+  const draftStation = '00000000-0000-4000-c000-000000000002';
 
   group('business owner', () {
     final client = _as('OWNER_ID');
@@ -46,8 +50,8 @@ void main() {
       expect((await auth.platformAccess()).isStaff, isFalse);
 
       final list = await stations.stations(demoBusiness);
-      expect(list, hasLength(2));
-      final live = list.firstWhere((s) => s.status == StationStatus.active);
+      expect(list.map((s) => s.id), containsAll([liveStation, draftStation]));
+      final live = list.firstWhere((s) => s.id == liveStation);
 
       final points = await stations.points(live.id);
       expect(points, isNotEmpty);
@@ -63,7 +67,7 @@ void main() {
     });
 
     test('atomic hours and connector replacement', () async {
-      final live = (await stations.stations(demoBusiness)).firstWhere((s) => s.status == StationStatus.active);
+      final live = (await stations.stations(demoBusiness)).firstWhere((s) => s.id == liveStation);
       await stations.replaceHours(live.id, [
         for (var d = 1; d <= 7; d++) OperatingHours(dayOfWeek: d, opensMinute: 360, closesMinute: 1380),
       ]);
@@ -78,7 +82,7 @@ void main() {
     });
 
     test('a live station rejects a direct address change', () async {
-      final live = (await stations.stations(demoBusiness)).firstWhere((s) => s.status == StationStatus.active);
+      final live = (await stations.stations(demoBusiness)).firstWhere((s) => s.id == liveStation);
       await expectLater(
         stations.updateStation(live.id, {'address_line1': 'Somewhere else'}),
         throwsA(isA<AppFailure>().having((f) => f.code, 'code', 'sensitive_change_requires_approval')),
@@ -112,7 +116,7 @@ void main() {
     });
 
     test('bookings with column grants, events and report', () async {
-      final live = (await stations.stations(demoBusiness)).firstWhere((s) => s.status == StationStatus.active);
+      final live = (await stations.stations(demoBusiness)).firstWhere((s) => s.id == liveStation);
       final now = DateTime.now();
       final list = await bookings.forStation(live.id, now.subtract(const Duration(days: 1)), now.add(const Duration(days: 30)));
       expect(list, isNotEmpty);
