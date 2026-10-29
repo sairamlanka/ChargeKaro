@@ -138,9 +138,14 @@ class _Confirmed extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 20),
-                GradientButton(label: l(K.viewBooking), icon: Icons.receipt_long_rounded, onPressed: () => context.go('/booking/${b.id}')),
+                // Signed in now, so home shows this booking at the top.
+                GradientButton(label: l(K.goToHome), icon: Icons.home_rounded, onPressed: () => context.go('/')),
                 const SizedBox(height: 8),
-                TextButton(onPressed: () => context.go('/'), child: Text(l(K.backToExplore))),
+                OutlinedButton.icon(
+                  onPressed: () => context.go('/booking/${b.id}'),
+                  icon: const Icon(Icons.receipt_long_rounded),
+                  label: Text(l(K.viewBooking)),
+                ),
               ]),
             ),
           ),

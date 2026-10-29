@@ -1,7 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_models/shared_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'models.dart';
 
 /// Small on-device state: recent stations, the last search, the unfinished
 /// booking and UI preferences. Nothing here is authoritative; bookings and
@@ -24,6 +27,7 @@ class LocalStore {
   static const _draft = 'booking_draft_v1';
   static const _locale = 'locale_v1';
   static const _otp = 'otp_attempts_v1';
+  static const _places = 'recent_places_v1';
 
   List<RecentStation> recentStations() {
     final raw = _prefs.getString(_recent);
@@ -41,6 +45,24 @@ class LocalStore {
   }
 
   Future<void> clearRecent() => _prefs.remove(_recent);
+
+  /// Places the customer picked in a place search, newest first, so they
+  /// can be suggested again without waiting for the network.
+  List<AreaMatch> recentPlaces() {
+    final raw = _prefs.getString(_places);
+    if (raw == null) return const [];
+    try {
+      return (jsonDecode(raw) as List).map((e) => AreaMatch.fromJson(Json.of(e))).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> addRecentPlace(AreaMatch m) async {
+    bool same(AreaMatch x) => x.label == m.label && (x.latitude - m.latitude).abs() < 0.001 && (x.longitude - m.longitude).abs() < 0.001;
+    final list = [m, ...recentPlaces().where((x) => !same(x))].take(8).toList();
+    await _prefs.setString(_places, jsonEncode(list.map((x) => x.toJson()).toList()));
+  }
 
   SavedSearch? lastSearch() {
     final raw = _prefs.getString(_search);
@@ -107,22 +129,51 @@ class RecentStation {
   Map<String, dynamic> toJson() => {'id': id, 'name': name, 'subtitle': subtitle, 'at': viewedAt.toIso8601String()};
 }
 
+/// The last search: a centre (nearby search) or, when [to] is set, a trip
+/// from [from] to [to].
 @immutable
 class SavedSearch {
-  const SavedSearch({required this.label, required this.latitude, required this.longitude, required this.radiusKm, required this.fromDevice});
+  const SavedSearch({
+    required this.label,
+    required this.latitude,
+    required this.longitude,
+    required this.radiusKm,
+    required this.fromDevice,
+    this.from,
+    this.to,
+    this.corridorKm,
+  });
   factory SavedSearch.fromJson(Map<String, dynamic> j) => SavedSearch(
         label: j['label'] as String,
         latitude: (j['lat'] as num).toDouble(),
         longitude: (j['lng'] as num).toDouble(),
         radiusKm: (j['radius'] as num).toDouble(),
         fromDevice: j['device'] as bool? ?? false,
+        from: j['from'] is Map ? TripPlace.fromJson((j['from'] as Map).cast<String, dynamic>()) : null,
+        to: j['to'] is Map ? TripPlace.fromJson((j['to'] as Map).cast<String, dynamic>()) : null,
+        corridorKm: (j['corridor'] as num?)?.toDouble(),
       );
   final String label;
   final double latitude;
   final double longitude;
   final double radiusKm;
   final bool fromDevice;
-  Map<String, dynamic> toJson() => {'label': label, 'lat': latitude, 'lng': longitude, 'radius': radiusKm, 'device': fromDevice};
+  final TripPlace? from;
+  final TripPlace? to;
+  final double? corridorKm;
+
+  bool get isTrip => from != null && to != null;
+
+  Map<String, dynamic> toJson() => {
+        'label': label,
+        'lat': latitude,
+        'lng': longitude,
+        'radius': radiusKm,
+        'device': fromDevice,
+        if (from != null) 'from': from!.toJson(),
+        if (to != null) 'to': to!.toJson(),
+        'corridor': ?corridorKm,
+      };
 }
 
 /// The few storage operations LocalStore needs.

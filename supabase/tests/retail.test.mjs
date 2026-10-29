@@ -89,7 +89,9 @@ describe('guest discovery', () => {
     assert.equal(d.points_detail.length, 1);
     assert.equal(d.points_detail[0].code, 'DC1');
     assert.equal(d.points_detail[0].bookable, true);
-    assert.equal(d.policy.slot_duration_minutes, 30);
+    assert.equal(d.policy.slot_duration_minutes, 15);
+    assert.equal(d.policy.report_before_minutes, 5);
+    assert.equal(d.policy.arrival_grace_minutes, 5);
     assert.equal(d.hours.length, 7);
     assert.equal(d.refund_policy.policy_confirmed, false);
     assert.equal(d.refund_policy.customer_cancellation_refundable, false);
@@ -111,7 +113,7 @@ describe('guest discovery', () => {
 describe('slot grid', () => {
   test('cells show booked, reserved, blocked, closed-hours and past states distinctly', async () => {
     const owner = await createUser('owner');
-    const s = await approvedStation({ owner, points: ['A', 'B'], hours: [360, 1320], policy: { buffer_minutes: 0 } });
+    const s = await approvedStation({ owner, points: ['A', 'B'], hours: [360, 1320], policy: { buffer_minutes: 0, slot_duration_minutes: 30 } });
     const customer = await createUser('customer');
     await hold(customer, s.pointIds[0], ist(1, 10), 60); // confirmed (fee 0)
     await setFee(1200);

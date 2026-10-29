@@ -9,8 +9,10 @@ import '../common/widgets.dart';
 import 'details_screen.dart';
 import 'flow_widgets.dart';
 import 'phone_verification.dart';
+import 'reserve.dart';
 
-/// Step 3: confirm the mobile number. Verifying signs the customer in,
+/// Step 3: confirm the mobile number, then reserve and go to payment.
+/// Verifying signs the customer in,
 /// creating the account the first time and reusing it afterwards, so the
 /// same number never ends up with two accounts.
 class VerifyScreen extends ConsumerWidget {
@@ -48,7 +50,7 @@ class VerifyScreen extends ConsumerWidget {
               onChangeNumber: () => context.pop(),
               onVerified: () async {
                 await reconcileProfile(context, ref, enteredName: draft.fullName, email: draft.email);
-                if (context.mounted) context.pushReplacement('/book/review');
+                if (context.mounted) await reserveDraft(context, ref);
               },
             ),
           ]),

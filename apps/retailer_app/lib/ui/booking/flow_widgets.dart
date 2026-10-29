@@ -37,7 +37,7 @@ class DraftSummaryCard extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(draft.stationName, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
             Text(f.slot(draft.start, draft.end), style: t.textTheme.bodySmall),
-            Text('${draft.pointLabel} · ${f.duration(draft.duration)}', style: t.textTheme.bodySmall),
+            Text([if (draft.connectorLabel.isNotEmpty) draft.connectorLabel, f.duration(draft.duration)].join(' · '), style: t.textTheme.bodySmall),
           ]),
         ),
         if (onChange != null) TextButton(onPressed: onChange, child: Text(l(K.change))),

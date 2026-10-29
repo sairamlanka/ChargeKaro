@@ -43,6 +43,9 @@ class AppConfig {
     }
     if (supabaseKey.isEmpty) {
       out.add('SUPABASE_ANON_KEY is not set.');
+    } else if (looksLikePlaceholder(supabaseKey)) {
+      out.add('SUPABASE_ANON_KEY is still the example value. Paste the publishable (anon) key from '
+          '`supabase status` (local) or Project Settings → API Keys (hosted).');
     } else if (looksPrivileged(supabaseKey)) {
       out.add('SUPABASE_ANON_KEY is a privileged key. Use the publishable (anon) key; '
           'the service-role key must never ship in an app.');
@@ -51,6 +54,10 @@ class AppConfig {
   }
 
   bool get isUsable => problems.isEmpty;
+
+  /// True for values copied from the example files rather than a real key.
+  static bool looksLikePlaceholder(String key) =>
+      key.contains('...') || key.contains('<') || key.contains('>') || key.contains(' ') || key == 'sb_publishable_';
 
   /// True for a service-role JWT or a new-style secret key. Refusing these at
   /// start-up stops a mis-pasted key from being shipped to users.

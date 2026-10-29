@@ -62,14 +62,16 @@ a signed-in customer (phone OTP). All errors come back as
 
 | Call | Who | Purpose |
 | --- | --- | --- |
-| `search_stations(p_latitude, p_longitude, p_radius_km)` | anon | Public stations in range with distance, status and next free slot |
+| `search_stations(p_latitude, p_longitude, p_radius_km)` | anon | Near Me: public stations in range with distance, status and next free slot; null radius means the `nearby_radius_km` setting (default 5) |
+| `search_stations_along_route(p_path, p_corridor_km, p_limit)` | anon | Along My Route: public stations within `p_corridor_km` (0.5 to 25; null means the `route_corridor_km` setting, default 5) of a route line `[[lat, lng], ...]` (2 to 2000 points), each once, in the order the driver reaches them, with `off_route_km`, `along_route_km`, next free slot and `total_found` (matches before `p_limit`, at most 100) |
 | `search_areas(p_query)` | anon | Area/station name matches from the database |
-| `geocode-area` (function) | anon | Area name to coordinates (Google Geocoding, server key) |
+| `geocode-area` (function) | anon | Place name to coordinates (Photon, free OpenStreetMap geocoder; optional `near` ranks nearby places first) |
+| `route-plan` (function) | anon | OSRM or openrouteservice (both OpenStreetMap). `{from, to}`: driving route with `routes` (up to 3 alternatives, each `path`, `distance_km`, `duration_minutes`). `{from, to, via}`: the same trip through a station, for the detour. `{from, destinations}` (at most 25): `distances`, driving distance and time to each, null where unroutable. Errors: `no_route`, `route_too_short`, `route_too_long`, `routing_unavailable` |
 | `get_public_station(p_station_id)` | anon | Details, points, hours, closures |
 | `get_station_slots(p_station_id, p_date)` | anon | Slot grid with a state per cell; no customer data |
 | `get_booking_terms()` | anon | Fee, hold length, refund policy text, terms/privacy versions, `app_status` |
-| `check_slot_availability(...)` | anon | Re-check slot and fee before holding |
-| `create_booking_hold(..., p_idempotency_key)` | customer | Hold (or confirm when the fee is 0) |
+| `check_station_availability(p_station_id, p_start_at, p_end_at, p_connector_type)` | anon | Free points of total for a time, and the fee, before holding |
+| `create_station_booking_hold(p_station_id, p_start_at, p_end_at, p_idempotency_key, p_connector_type, p_vehicle_label)` | customer | Assigns any free compatible point (best fit) and holds it, or confirms when the fee is 0. `station_full` when every point is taken; `overlapping_booking` when the customer already has a booking then |
 | `payments-create-order`, `payments-verify` (functions) | customer | Razorpay order and signature check |
 | `get_my_bookings`, `get_my_booking`, `get_my_booking_qr` | customer | Own bookings only |
 | `preview_cancellation`, `cancel_booking` | customer | Refund eligibility, then cancel |

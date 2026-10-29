@@ -38,7 +38,7 @@ Last updated 2026-10-21. Legend:
 | Retailer App | Discovery, slots, booking, payment, My Bookings, cancellation, profile, account deletion | Done | Widget tests on a mocked backend; web build screenshotted against a local fake backend, not yet against Supabase |
 | Retailer App | English + Telugu | Done | Telugu strings machine-quality; have a native speaker review before launch |
 | Retailer App | Phone OTP, SMS and email confirmations | Needs credentials | SMS provider in Supabase Auth; Twilio and Resend secrets for `dispatch-customer-messages` |
-| Retailer App | Area search | Needs credentials | `GOOGLE_MAPS_SERVER_KEY` for `geocode-area`; without it only station/area names in the database match |
+| Retailer App | Two searches: Along My Route (From / To, alternative routes, stations along the selected route with detour) and Near Me (device location or a chosen place, straight-line and driving distance) | Done | Free OpenStreetMap services (OSRM routing, Photon places), no key needed for testing; public servers are light-use only, so set `ORS_API_KEY` or self-host OSRM before launch |
 | Retailer App | WhatsApp confirmations | Planned | Channel reserved in the outbox; no sender yet |
 | Retailer App | Booking-fee refund policy | Placeholder | Server policy drives the app; owner decision pending |
 | Retailer App | Android / iOS builds | Planned | Not built here; ids `in.chargekaro.app` |
@@ -55,5 +55,6 @@ Last updated 2026-10-21. Legend:
 5. A Firebase project (Android/iOS config files, service account for push).
 6. A decision on the booking-fee refund policy.
 7. For the customer app: an SMS provider for OTP (Supabase Auth), Twilio and
-   Resend accounts for confirmations, a server-side Google Maps key for area
-   search, a map tile provider, and support email/phone.
+   Resend accounts for confirmations, a production routing choice (free
+   openrouteservice key or self-hosted OSRM), a map tile provider, and
+   support email/phone.

@@ -50,13 +50,24 @@ supabase secrets set \
   CRON_SECRET=$(openssl rand -hex 32) \
   FCM_SERVICE_ACCOUNT_JSON="$(cat service-account.json)" \
   CORS_ALLOWED_ORIGIN=https://book.example.com \
-  GOOGLE_MAPS_SERVER_KEY=... \
   TWILIO_ACCOUNT_SID=... TWILIO_AUTH_TOKEN=... TWILIO_FROM_NUMBER=+91... \
   RESEND_API_KEY=... EMAIL_FROM="ChargeKaro <bookings@example.com>"
 
 supabase functions deploy payments-create-order payments-verify razorpay-webhook \
-  process-refunds dispatch-notifications geocode-area dispatch-customer-messages
+  process-refunds dispatch-notifications geocode-area route-plan dispatch-customer-messages
 ```
+
+Route search and place search in the customer app use free OpenStreetMap
+services and need no key to start: `route-plan` calls the public OSRM demo
+server and `geocode-area` the public Photon server. Both public servers are
+for light use only. Before launch, either set `ORS_API_KEY` (free
+openrouteservice key, about 2,000 routes a day) or run OSRM yourself with the
+India extract and set `OSRM_URL`; `PHOTON_URL` points place search at a
+self-hosted Photon in the same way.
+
+The default search distances are platform settings, changed without an app
+release: `update public.platform_settings set value = '8' where key =
+'route_corridor_km'` (0.5 to 25 km) or `'nearby_radius_km'` (0.5 to 50 km).
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are
 provided to functions automatically by Supabase. JWT verification settings

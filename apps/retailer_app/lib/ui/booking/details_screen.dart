@@ -11,9 +11,12 @@ import '../../state/providers.dart';
 import '../common/widgets.dart';
 import 'flow_widgets.dart';
 import 'phone_verification.dart';
+import 'reserve.dart';
 
 /// Step 2: who is charging. Name and mobile are required, email and vehicle
 /// are optional. No password: the mobile is verified by a one-time code.
+/// When this device already verified the number, Continue reserves the
+/// time and opens the payment page straight away.
 class DetailsScreen extends ConsumerStatefulWidget {
   const DetailsScreen({super.key});
 
@@ -77,8 +80,8 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
       setState(() => _busy = true);
       await reconcileProfile(context, ref, enteredName: _name.text.trim(), email: _email.text);
       if (!mounted) return;
-      setState(() => _busy = false);
-      context.push('/book/review');
+      await reserveDraft(context, ref);
+      if (mounted) setState(() => _busy = false);
     } else {
       context.push('/book/verify');
     }

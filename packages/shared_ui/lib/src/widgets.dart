@@ -385,6 +385,7 @@ class GradientProgressBar extends StatelessWidget {
               curve: Motion.emphasized,
               builder: (context, x, _) => FractionallySizedBox(
                 widthFactor: x,
+                heightFactor: 1,
                 child: const DecoratedBox(decoration: BoxDecoration(gradient: Brand.gradient)),
               ),
             ),

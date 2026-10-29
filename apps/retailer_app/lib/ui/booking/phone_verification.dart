@@ -78,6 +78,28 @@ class _OtpPanelState extends ConsumerState<OtpPanel> {
   AppFailure? _error;
   bool _unavailable = false;
 
+  /// Development builds only: the code the local dev SMS hook received, so
+  /// sign-in works without an SMS provider. Never set in production.
+  String? _devCode;
+
+  Future<void> _loadDevCode() async {
+    if (ref.read(appConfigProvider).environment != 'development') return;
+    final repo = ref.read(retailRepositoryProvider);
+    for (var i = 0; i < 3 && mounted; i++) {
+      String? code;
+      try {
+        code = await repo.devOtpCode(widget.phone);
+      } catch (_) {
+        code = null;
+      }
+      if (code != null && code.isNotEmpty) {
+        if (mounted) setState(() => _devCode = code);
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -85,6 +107,7 @@ class _OtpPanelState extends ConsumerState<OtpPanel> {
     if (recent.isNotEmpty && DateTime.now().difference(recent.last) < const Duration(minutes: 5)) {
       // A code was sent moments ago (e.g. the app was reopened): reuse it.
       _lastSent = recent.last;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadDevCode());
     } else {
       WidgetsBinding.instance.addPostFrameCallback((_) => _send());
     }
@@ -130,8 +153,12 @@ class _OtpPanelState extends ConsumerState<OtpPanel> {
       final now = DateTime.now();
       await ref.read(localStoreProvider).recordOtpRequest(widget.phone, now);
       if (!mounted) return;
-      setState(() => _lastSent = now);
+      setState(() {
+        _lastSent = now;
+        _devCode = null;
+      });
       _focus.requestFocus();
+      unawaited(_loadDevCode());
     } catch (e) {
       final f = failureOf(e);
       if (!mounted) return;
@@ -200,6 +227,34 @@ class _OtpPanelState extends ConsumerState<OtpPanel> {
         ),
         if (widget.onChangeNumber != null)
           Align(alignment: Alignment.centerLeft, child: TextButton(onPressed: widget.onChangeNumber, child: Text(l(K.changeNumber)))),
+        if (_devCode != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: StatusTone.warning.colors(t.colorScheme).$1,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(children: [
+              Icon(Icons.developer_mode_rounded, color: StatusTone.warning.colors(t.colorScheme).$2),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(l(K.devOtpBanner, {'code': _devCode}),
+                    style: TextStyle(color: StatusTone.warning.colors(t.colorScheme).$2, fontWeight: FontWeight.w600)),
+              ),
+              TextButton(
+                onPressed: _verifying
+                    ? null
+                    : () {
+                        _code.text = _devCode!;
+                        setState(() {});
+                        _verify();
+                      },
+                child: Text(l(K.devOtpUse)),
+              ),
+            ]),
+          ),
+        ],
         const SizedBox(height: 8),
         TextField(
           controller: _code,
