@@ -75,8 +75,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/loading', builder: (_, _) => const _Loading()),
       GoRoute(path: '/setup', builder: (_, _) => const SetupBusinessPage()),
-      StatefulShellRoute.indexedStack(
+      StatefulShellRoute(
         builder: (context, state, shell) => HomeShell(shell: shell),
+        navigatorContainerBuilder: (context, shell, children) => FadeIndexedStack(index: shell.currentIndex, children: children),
         branches: [
           StatefulShellBranch(routes: [GoRoute(path: '/home', builder: (_, _) => const HomePage())]),
           StatefulShellBranch(routes: [
@@ -141,7 +142,7 @@ class _Loading extends ConsumerWidget {
     return Scaffold(
       body: access.hasError
           ? ErrorState(failure: AppFailure.from(access.error!), onRetry: () => ref.invalidate(businessAccessProvider))
-          : const Center(child: CircularProgressIndicator()),
+          : const Center(child: ChargeLogo(size: 64)),
     );
   }
 }

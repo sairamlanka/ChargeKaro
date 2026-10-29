@@ -86,7 +86,7 @@ jobs:
       - run: flutter analyze
       - name: Unit and widget tests
         run: |
-          for pkg in packages/shared_models packages/shared_validation packages/shared_data packages/shared_ui apps/admin_panel apps/business_app; do
+          for pkg in packages/shared_models packages/shared_validation packages/shared_data packages/shared_ui apps/admin_panel apps/business_app apps/retailer_app; do
             echo "::group::$pkg"
             (cd "$pkg" && flutter test) || exit 1
             echo "::endgroup::"
@@ -94,6 +94,12 @@ jobs:
       - name: Build Admin Panel (web)
         working-directory: apps/admin_panel
         # Placeholder config only proves the build; real values come from deployment secrets.
+        run: >-
+          flutter build web --release
+          --dart-define=SUPABASE_URL=https://example.supabase.co
+          --dart-define=SUPABASE_ANON_KEY=sb_publishable_ci_placeholder
+      - name: Build customer app (web)
+        working-directory: apps/retailer_app
         run: >-
           flutter build web --release
           --dart-define=SUPABASE_URL=https://example.supabase.co

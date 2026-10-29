@@ -1,0 +1,40 @@
+name: retailer_app
+description: "ChargeKaro: find nearby EV charging stations and book a slot"
+publish_to: 'none'
+version: 1.0.0+1
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  connectivity_plus: ^7.3.2
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_map: ^8.3.2
+  flutter_riverpod: ^3.4.3
+  geolocator: ^14.0.1
+  go_router: ^18.1.1
+  intl: ^0.20.2
+  latlong2: ^0.10.1
+  qr_flutter: ^4.1.0
+  razorpay_flutter: ^1.4.7
+  shared_data:
+  shared_models:
+  shared_preferences: ^2.5.6
+  shared_ui:
+  shared_validation:
+  supabase_flutter: ^2.18.3
+  url_launcher: ^6.3.3
+  web: ^1.1.1
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+  mocktail: ^1.0.5
+
+flutter:
+  uses-material-design: true

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:shared_data/shared_data.dart';
+import 'package:shared_ui/shared_ui.dart';
 
 class _MockAuth extends Mock implements AuthRepository {}
 
@@ -17,7 +18,12 @@ Widget _app(AuthRepository auth) {
   ]);
   return ProviderScope(
     overrides: [authRepositoryProvider.overrideWithValue(auth)],
-    child: MaterialApp.router(routerConfig: router),
+    // Decorative loops never settle; tests run with reduced motion, as a
+    // user with "remove animations" switched on would.
+    child: MaterialApp.router(
+      routerConfig: router,
+      builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(disableAnimations: true), child: child!),
+    ),
   );
 }
 
@@ -27,7 +33,7 @@ void main() {
 
   testWidgets('blocks submission until email and password are valid', (tester) async {
     await tester.pumpWidget(_app(auth));
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.tap(find.widgetWithText(GradientButton, 'Sign in'));
     await tester.pump();
 
     expect(find.text('Enter your password'), findsOneWidget);
@@ -35,7 +41,7 @@ void main() {
 
     await tester.enterText(find.widgetWithText(TextFormField, 'Email'), 'not-an-email');
     await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'x');
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.tap(find.widgetWithText(GradientButton, 'Sign in'));
     await tester.pump();
     verifyNever(() => auth.signIn(any(), any()));
   });
@@ -46,7 +52,7 @@ void main() {
 
     await tester.enterText(find.widgetWithText(TextFormField, 'Email'), 'owner@example.com');
     await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'Secret#123');
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.tap(find.widgetWithText(GradientButton, 'Sign in'));
     await tester.pumpAndSettle();
 
     verify(() => auth.signIn('owner@example.com', 'Secret#123')).called(1);
@@ -60,7 +66,7 @@ void main() {
 
     await tester.enterText(find.widgetWithText(TextFormField, 'Email'), 'owner@example.com');
     await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'wrong');
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.tap(find.widgetWithText(GradientButton, 'Sign in'));
     await tester.pumpAndSettle();
 
     expect(find.text('Email or password is incorrect.'), findsOneWidget);
@@ -74,7 +80,7 @@ void main() {
 
     await tester.enterText(find.widgetWithText(TextFormField, 'Email'), 'new@example.com');
     await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'Secret#123');
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.tap(find.widgetWithText(GradientButton, 'Sign in'));
     await tester.pumpAndSettle();
 
     expect(find.text('verify new@example.com'), findsOneWidget);

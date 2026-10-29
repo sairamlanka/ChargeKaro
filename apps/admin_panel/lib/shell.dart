@@ -16,15 +16,15 @@ class _Destination {
 }
 
 const _destinations = [
-  _Destination('/', 'Dashboard', Icons.dashboard_outlined, null),
-  _Destination('/applications', 'Applications', Icons.assignment_outlined, PlatformPermission.applicationsReview),
-  _Destination('/stations', 'Stations', Icons.ev_station_outlined, PlatformPermission.businessesRead),
-  _Destination('/bookings', 'Bookings', Icons.event_note_outlined, PlatformPermission.bookingsReadAll),
-  _Destination('/finance', 'Finance', Icons.account_balance_outlined, PlatformPermission.financeRead),
-  _Destination('/staff', 'Admins', Icons.admin_panel_settings_outlined, PlatformPermission.adminsManage),
-  _Destination('/settings', 'Settings', Icons.tune, PlatformPermission.settingsManage),
-  _Destination('/audit', 'Audit log', Icons.history, PlatformPermission.auditRead),
-  _Destination('/notifications', 'Notifications', Icons.notifications_outlined, null),
+  _Destination('/', 'Dashboard', Icons.space_dashboard_rounded, null),
+  _Destination('/applications', 'Applications', Icons.assignment_rounded, PlatformPermission.applicationsReview),
+  _Destination('/stations', 'Stations', Icons.ev_station_rounded, PlatformPermission.businessesRead),
+  _Destination('/bookings', 'Bookings', Icons.event_note_rounded, PlatformPermission.bookingsReadAll),
+  _Destination('/finance', 'Finance', Icons.account_balance_rounded, PlatformPermission.financeRead),
+  _Destination('/staff', 'Admins', Icons.admin_panel_settings_rounded, PlatformPermission.adminsManage),
+  _Destination('/settings', 'Settings', Icons.tune_rounded, PlatformPermission.settingsManage),
+  _Destination('/audit', 'Audit log', Icons.history_rounded, PlatformPermission.auditRead),
+  _Destination('/notifications', 'Notifications', Icons.notifications_rounded, null),
 ];
 
 /// Sidebar layout. Navigation is filtered by the caller's permissions from
@@ -58,7 +58,13 @@ class AdminShell extends ConsumerWidget {
           onDestinationSelected: (i) => context.go(items[i].path),
           leading: Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
-            child: wide ? Text('ChargeKaro Admin', style: Theme.of(context).textTheme.titleMedium) : const Icon(Icons.bolt),
+            child: wide
+                ? Row(mainAxisSize: MainAxisSize.min, children: [
+                    const ChargeLogo(size: 30, animate: false),
+                    const SizedBox(width: 8),
+                    Text('ChargeKaro', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                  ])
+                : const ChargeLogo(size: 30, animate: false),
           ),
           trailing: Expanded(
             child: Align(
@@ -82,7 +88,6 @@ class AdminShell extends ConsumerWidget {
           body: SafeArea(
             child: Row(children: [
               rail,
-              const VerticalDivider(width: 1),
               Expanded(child: child),
             ]),
           ),
@@ -122,22 +127,22 @@ class PageFrame extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
           child: Wrap(
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             runSpacing: 8,
             spacing: 8,
             children: [
-              Text(title, style: Theme.of(context).textTheme.headlineSmall),
+              Text(title, style: Theme.of(context).textTheme.headlineMedium),
               Wrap(spacing: 8, runSpacing: 8, children: actions),
             ],
           ),
         ),
         Expanded(
           child: scroll
-              ? SingleChildScrollView(padding: const EdgeInsets.fromLTRB(24, 0, 24, 24), child: child)
-              : Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 0), child: child),
+              ? SingleChildScrollView(padding: const EdgeInsets.fromLTRB(24, 0, 24, 24), child: Entrance(index: 1, child: child))
+              : Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 0), child: Entrance(index: 1, child: child)),
         ),
       ],
     );

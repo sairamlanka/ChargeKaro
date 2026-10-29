@@ -54,55 +54,119 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Form(
-              key: _form,
-              child: AutofillGroup(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Icon(Icons.bolt, size: 48, color: Theme.of(context).colorScheme.primary),
-                    const SizedBox(height: 8),
-                    Text('ChargeKaro Admin', textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall),
-                    const SizedBox(height: 24),
-                    TextFormField(
-                      controller: _email,
-                      decoration: const InputDecoration(labelText: 'Email'),
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
-                      validator: Validators.email,
+    final t = Theme.of(context);
+    final scheme = t.colorScheme;
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final form = Form(
+      key: _form,
+      child: AutofillGroup(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: staggered([
+            if (!wide) ...[const Center(child: ChargeLogo(size: 56)), const SizedBox(height: 16)],
+            Text('Sign in', style: t.textTheme.headlineMedium),
+            const SizedBox(height: 6),
+            Text('Platform staff only. Accounts are created by a super admin.',
+                style: t.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+            const SizedBox(height: 28),
+            TextFormField(
+              controller: _email,
+              decoration: const InputDecoration(labelText: 'Work email', prefixIcon: Icon(Icons.alternate_email_rounded)),
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.email],
+              validator: Validators.email,
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _password,
+              decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline_rounded)),
+              obscureText: true,
+              autofillHints: const [AutofillHints.password],
+              validator: (v) => (v ?? '').isEmpty ? 'Enter your password' : null,
+              onFieldSubmitted: (_) => _submit(),
+            ),
+            AnimatedSize(
+              duration: Motion.medium,
+              curve: Motion.curve,
+              child: _error == null
+                  ? const SizedBox(width: double.infinity)
+                  : Container(
+                      margin: const EdgeInsets.only(top: 14),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: scheme.errorContainer, borderRadius: BorderRadius.circular(AppTheme.fieldRadius)),
+                      child: Row(children: [
+                        Icon(Icons.error_outline_rounded, color: scheme.onErrorContainer, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer))),
+                      ]),
                     ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _password,
-                      decoration: const InputDecoration(labelText: 'Password'),
-                      obscureText: true,
-                      autofillHints: const [AutofillHints.password],
-                      validator: (v) => (v ?? '').isEmpty ? 'Enter your password' : null,
-                      onFieldSubmitted: (_) => _submit(),
-                    ),
-                    if (_error != null) ...[
-                      const SizedBox(height: 12),
-                      Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                    ],
-                    const SizedBox(height: 20),
-                    FilledButton(
-                      onPressed: _busy ? null : _submit,
-                      child: _busy ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Sign in'),
-                    ),
-                    TextButton(onPressed: _busy ? null : _forgot, child: const Text('Forgot password?')),
-                  ],
-                ),
+            ),
+            const SizedBox(height: 22),
+            GradientButton(label: 'Sign in', icon: Icons.arrow_forward_rounded, busy: _busy, onPressed: _submit),
+            const SizedBox(height: 6),
+            TextButton(onPressed: _busy ? null : _forgot, child: const Text('Forgot password?')),
+          ]),
+        ),
+      ),
+    );
+
+    final panel = AuroraBackground(
+      child: Padding(
+        padding: const EdgeInsets.all(48),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const ChargeLogo(size: 44),
+            const SizedBox(width: 10),
+            Text('ChargeKaro Admin', style: t.textTheme.titleLarge?.copyWith(color: Colors.white)),
+          ]),
+          const Spacer(),
+          Entrance(
+            child: Text('Keep India\'s charging\nnetwork moving.',
+                style: t.textTheme.displaySmall?.copyWith(color: Colors.white, height: 1.15)),
+          ),
+          const SizedBox(height: 16),
+          Entrance(
+            index: 1,
+            child: Text(
+              'Review new stations, keep bookings healthy and see the booking-fee books, all in one place.',
+              style: t.textTheme.titleMedium?.copyWith(color: Colors.white.withValues(alpha: 0.78), fontWeight: FontWeight.w500, height: 1.5),
+            ),
+          ),
+          const SizedBox(height: 32),
+          ...staggered([
+            for (final (icon, text) in const [
+              (Icons.verified_rounded, 'Approve stations with a full document trail'),
+              (Icons.shield_rounded, 'Every action checked by role and audited'),
+              (Icons.insights_rounded, 'Real figures only, never estimates dressed as facts'),
+            ])
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(children: [
+                  Icon(icon, color: Brand.mint, size: 20),
+                  const SizedBox(width: 10),
+                  Text(text, style: t.textTheme.bodyLarge?.copyWith(color: Colors.white.withValues(alpha: 0.9))),
+                ]),
               ),
+          ], start: 2),
+          const Spacer(),
+        ]),
+      ),
+    );
+
+    return Scaffold(
+      backgroundColor: scheme.surfaceContainerLowest,
+      body: Row(children: [
+        if (wide) Expanded(flex: 5, child: panel),
+        Expanded(
+          flex: 4,
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(32),
+              child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 400), child: form),
             ),
           ),
         ),
-      ),
+      ]),
     );
   }
 }

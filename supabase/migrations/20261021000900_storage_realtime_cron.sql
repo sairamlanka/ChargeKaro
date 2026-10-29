@@ -19,6 +19,7 @@ exception when others then
 end;
 $$;
 
+revoke execute on function private.try_uuid(text) from public, anon;
 grant execute on function private.try_uuid(text) to authenticated, service_role;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types) values

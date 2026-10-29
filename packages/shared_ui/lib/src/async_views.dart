@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_data/shared_data.dart';
 
+import 'motion.dart';
+
 /// Loading / error / data for an [AsyncValue], with a retry that the caller
 /// wires to `ref.invalidate`.
 class AsyncView<T> extends StatelessWidget {
@@ -17,7 +19,7 @@ class AsyncView<T> extends StatelessWidget {
         skipLoadingOnRefresh: true,
         skipLoadingOnReload: true,
         data: builder,
-        loading: () => loading ?? const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())),
+        loading: () => loading ?? const SkeletonList(),
         error: (e, _) => ErrorState(failure: AppFailure.from(e), onRetry: onRetry),
       );
 }
@@ -63,16 +65,28 @@ class EmptyState extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 420),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 48, color: t.colorScheme.outline),
-              const SizedBox(height: 12),
-              Text(title, style: t.textTheme.titleMedium, textAlign: TextAlign.center),
+            children: staggered([
+              Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [t.colorScheme.primary.withValues(alpha: 0.16), t.colorScheme.secondary.withValues(alpha: 0.10)],
+                  ),
+                ),
+                child: Icon(icon, size: 40, color: t.colorScheme.primary),
+              ),
+              const SizedBox(height: 16),
+              Text(title, style: t.textTheme.titleLarge, textAlign: TextAlign.center),
               if (message != null) ...[
-                const SizedBox(height: 6),
-                Text(message!, style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant), textAlign: TextAlign.center),
+                const SizedBox(height: 8),
+                Text(message!, style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant, height: 1.45), textAlign: TextAlign.center),
               ],
-              if (action != null) ...[const SizedBox(height: 16), action!],
-            ],
+              if (action != null) ...[const SizedBox(height: 20), action!],
+            ]),
           ),
         ),
       ),
@@ -84,14 +98,22 @@ class EmptyState extends StatelessWidget {
 /// whether it succeeded. Keeps every button handler three lines long.
 Future<bool> runAction(BuildContext context, Future<void> Function() action, {String? success}) async {
   final messenger = ScaffoldMessenger.of(context);
-  final errorColor = Theme.of(context).colorScheme.error;
+  final scheme = Theme.of(context).colorScheme;
+  final errorColor = scheme.error;
   try {
     await action();
-    if (success != null) messenger.showSnackBar(SnackBar(content: Text(success)));
+    if (success != null) {
+      messenger.showSnackBar(SnackBar(
+        content: Row(children: [Icon(Icons.check_circle_rounded, color: scheme.onInverseSurface), const SizedBox(width: 10), Expanded(child: Text(success))]),
+      ));
+    }
     return true;
   } catch (e) {
     final f = AppFailure.from(e);
-    messenger.showSnackBar(SnackBar(content: Text(f.message), backgroundColor: errorColor));
+    messenger.showSnackBar(SnackBar(
+      content: Row(children: [Icon(Icons.error_outline_rounded, color: scheme.onError), const SizedBox(width: 10), Expanded(child: Text(f.message, style: TextStyle(color: scheme.onError)))]),
+      backgroundColor: errorColor,
+    ));
     return false;
   }
 }

@@ -16,43 +16,68 @@ class MorePage extends ConsumerWidget {
     final access = ref.watch(currentAccessProvider);
     final all = ref.watch(businessAccessProvider).value ?? const [];
     final unread = ref.watch(unreadNotificationsProvider).value ?? 0;
+    Widget item(IconData icon, Color color, String title, VoidCallback onTap, {Widget? badge}) => ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          title: Text(title, style: Theme.of(context).textTheme.titleSmall),
+          trailing: Row(mainAxisSize: MainAxisSize.min, children: [?badge, const Icon(Icons.chevron_right_rounded)]),
+          onTap: onTap,
+        );
     return Scaffold(
       appBar: AppBar(title: const Text('More')),
-      body: ListView(children: [
-        if (access != null)
-          ListTile(
-            title: Text(access.businessName),
-            subtitle: Text('${access.role.label} · ${access.businessStatus.label}'),
-            trailing: all.length > 1
-                ? PopupMenuButton<String>(
-                    tooltip: 'Switch business',
-                    icon: const Icon(Icons.swap_horiz),
-                    onSelected: ref.read(selectedBusinessIdProvider.notifier).select,
-                    itemBuilder: (_) => [for (final a in all) CheckedPopupMenuItem(value: a.businessId, checked: a.businessId == access.businessId, child: Text(a.businessName))],
-                  )
-                : null,
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+        children: staggered([
+          if (access != null)
+            HeroHeader(
+              eyebrow: access.role.label,
+              title: access.businessName,
+              subtitle: access.businessStatus.label,
+              trailing: all.length > 1
+                  ? PopupMenuButton<String>(
+                      tooltip: 'Switch business',
+                      icon: const Icon(Icons.swap_horiz_rounded, color: Colors.white),
+                      onSelected: ref.read(selectedBusinessIdProvider.notifier).select,
+                      itemBuilder: (_) => [
+                        for (final a in all) CheckedPopupMenuItem(value: a.businessId, checked: a.businessId == access.businessId, child: Text(a.businessName)),
+                      ],
+                    )
+                  : null,
+            ),
+          const SizedBox(height: 16),
+          Card(
+            child: Column(children: [
+              item(Icons.notifications_rounded, Brand.ocean, 'Notifications', () => context.go('/more/notifications'),
+                  badge: unread > 0 ? Badge(label: Text('$unread')) : null),
+              if (access?.can(BusinessPermission.reportsView) ?? false)
+                item(Icons.insights_rounded, Brand.amber, 'Reports', () => context.go('/more/reports')),
+              if (access?.isOwner ?? false) item(Icons.groups_rounded, const Color(0xFF7C3AED), 'Team', () => context.go('/more/team')),
+              item(Icons.person_rounded, Brand.green, 'Account', () => context.go('/more/account')),
+            ]),
           ),
-        const Divider(),
-        ListTile(
-          leading: Badge(isLabelVisible: unread > 0, label: Text('$unread'), child: const Icon(Icons.notifications_outlined)),
-          title: const Text('Notifications'),
-          onTap: () => context.go('/more/notifications'),
-        ),
-        if (access?.can(BusinessPermission.reportsView) ?? false)
-          ListTile(leading: const Icon(Icons.insights_outlined), title: const Text('Reports'), onTap: () => context.go('/more/reports')),
-        if (access?.isOwner ?? false)
-          ListTile(leading: const Icon(Icons.group_outlined), title: const Text('Team'), onTap: () => context.go('/more/team')),
-        ListTile(leading: const Icon(Icons.person_outline), title: const Text('Account'), onTap: () => context.go('/more/account')),
-        ListTile(
-          leading: const Icon(Icons.logout),
-          title: const Text('Sign out'),
-          onTap: () => signOut(ref.read(authRepositoryProvider), ref.read(notificationRepositoryProvider)),
-        ),
-        const Padding(
-          padding: EdgeInsets.all(16),
-          child: Text('ChargeKaro shows charger status as reported by your staff. It does not control chargers remotely.'),
-        ),
-      ]),
+          const SizedBox(height: 12),
+          Card(
+            child: item(
+              Icons.logout_rounded,
+              Theme.of(context).colorScheme.error,
+              'Sign out',
+              () => signOut(ref.read(authRepositoryProvider), ref.read(notificationRepositoryProvider)),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              'ChargeKaro shows charger status as reported by your staff. It does not control chargers remotely.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ),
+        ]),
+      ),
     );
   }
 }

@@ -1,0 +1,506 @@
+<title>ChargeKaro Request Flow</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one wide system map on top, the numbered walkthrough beside/below it, then reference sections. */
+:root {
+  --bg: #f4f7f9;
+  --surface: #ffffff;
+  --ink: #0e1b2b;
+  --muted: #5a6b7d;
+  --line: #d5dee6;
+  --green: #00875a;
+  --green-tint: #e2f4ec;
+  --blue: #0369a1;
+  --blue-tint: #e0f0fa;
+  --amber: #b45309;
+  --amber-tint: #fdf0dc;
+  --zone: #eef3f7;
+  --display: "Sora", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1420; --surface: #122133; --ink: #e6eef6; --muted: #9fb1c3; --line: #2a3d52;
+    --green: #3ddc97; --green-tint: #123a2e; --blue: #60b8ef; --blue-tint: #12304a;
+    --amber: #f5b14c; --amber-tint: #3a2a12; --zone: #0f1c2b; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b1420; --surface: #122133; --ink: #e6eef6; --muted: #9fb1c3; --line: #2a3d52;
+  --green: #3ddc97; --green-tint: #123a2e; --blue: #60b8ef; --blue-tint: #12304a;
+  --amber: #f5b14c; --amber-tint: #3a2a12; --zone: #0f1c2b; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.55; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 40px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 40px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: -0.02em; }
+h1 { font-size: clamp(30px, 4vw, 44px); font-weight: 800; }
+h2 { font-size: 24px; font-weight: 700; }
+h3 { font-size: 16px; font-weight: 700; }
+p { margin: 0; }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+.lede { color: var(--muted); max-width: 68ch; font-size: 18px; }
+header { display: grid; gap: 12px; }
+.eyebrow { font: 600 12px/1 var(--body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--green); }
+
+.switch { display: inline-flex; gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; flex-wrap: wrap; }
+.switch button { font: 600 14px var(--body); color: var(--muted); background: none; border: 0; padding: 8px 16px; border-radius: 999px; cursor: pointer; }
+.switch button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.switch button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+.map { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 16px; display: grid; gap: 12px; }
+.map-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.legend { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 13px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.scroll { overflow-x: auto; }
+figure { margin: 0; }
+figure svg { display: block; width: 100%; min-width: 980px; height: auto; color: var(--ink); }
+figcaption { color: var(--muted); font-size: 14px; }
+
+/* SVG styling through the page tokens */
+.box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+.zone { fill: var(--zone); stroke: var(--line); stroke-width: 1.5; }
+.ext { fill: var(--amber-tint); stroke: var(--amber); stroke-width: 1.5; }
+.gate { fill: var(--green-tint); stroke: var(--green); stroke-width: 1.5; }
+.future { fill: var(--surface); stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 6 5; }
+.t-title { font: 700 15px var(--display); fill: currentColor; }
+.t-zone { font: 700 13px var(--body); letter-spacing: 0.08em; text-transform: uppercase; fill: var(--muted); }
+.t-sub { font: 400 12px var(--body); fill: var(--muted); }
+.t-mono { font: 400 10.5px var(--mono); fill: var(--muted); }
+.t-label { font: 600 11.5px var(--body); fill: currentColor; paint-order: stroke; stroke: var(--surface); stroke-width: 5px; stroke-linejoin: round; }
+.arrow { fill: none; stroke: var(--blue); stroke-width: 2; }
+.arrow.auto { stroke-dasharray: 5 4; }
+.arrow.money { stroke: var(--amber); }
+.num circle { fill: var(--blue); }
+.num.money circle { fill: var(--amber); }
+.num text { font: 700 11px var(--body); fill: #fff; text-anchor: middle; dominant-baseline: central; }
+.tbl { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; transition: stroke 0.25s, fill 0.25s; }
+.flow { transition: opacity 0.3s; }
+.mode-onb .booking, .mode-book .onboarding { display: none; }
+.mode-onb .hi-onb .tbl, .mode-book .hi-book .tbl { stroke: var(--blue); stroke-width: 2; fill: var(--blue-tint); }
+.flow.dim { opacity: 0.18; }
+.flow.focus .arrow { stroke-width: 3.2; }
+@media (prefers-reduced-motion: reduce) { .tbl, .flow { transition: none; } }
+
+.steps { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); padding: 0; margin: 0; list-style: none; counter-reset: s; }
+.steps li { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: grid; gap: 8px; align-content: start; min-width: 0; cursor: default; }
+.steps li:hover, .steps li:focus-within { border-color: var(--blue); }
+.steps .n { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--blue); color: #fff; font: 700 13px var(--body); }
+.steps .money .n { background: var(--amber); }
+.steps .row { display: flex; gap: 10px; align-items: center; }
+.steps p { font-size: 14.5px; }
+.stored { font-size: 13px; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 8px; overflow-wrap: anywhere; }
+.stored b { color: var(--ink); font-weight: 600; }
+
+.check { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; counter-reset: c; padding: 0; margin: 0; list-style: none; }
+.check li { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; font-size: 14px; display: grid; gap: 4px; position: relative; min-width: 0; }
+.check li strong { font-family: var(--display); font-size: 14px; }
+.check li.stop { border-color: var(--green); background: var(--green-tint); }
+
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 14px; }
+th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 12px var(--body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+
+.two { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.card ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14.5px; }
+.card.secret { border-color: var(--amber); }
+section { display: grid; gap: 16px; }
+.note { color: var(--muted); font-size: 14px; max-width: 75ch; }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">ChargeKaro · how it works</span>
+    <h1>From a station owner's request to an approved, bookable station</h1>
+    <p class="lede">One map of the whole system. Pick a journey to see which way a request travels, how the person is identified at each step, and exactly where every piece of data is saved.</p>
+  </header>
+
+  <div class="map" id="map">
+    <div class="map-head">
+      <div class="switch" role="group" aria-label="Choose a journey">
+        <button type="button" id="btn-onb" aria-pressed="true" data-mode="onb">Station onboarding</button>
+        <button type="button" id="btn-book" aria-pressed="false" data-mode="book">Driver booking &amp; check-in</button>
+      </div>
+      <div class="legend" aria-hidden="true">
+        <span><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="var(--blue)" stroke-width="2"/></svg>request from an app</span>
+        <span><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="var(--blue)" stroke-width="2" stroke-dasharray="5 4"/></svg>automatic, in the background</span>
+        <span><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="var(--amber)" stroke-width="2"/></svg>money (₹12 booking fee)</span>
+      </div>
+    </div>
+
+    <div class="scroll">
+      <figure class="mode-onb" id="fig">
+        <svg viewBox="0 0 1330 735" role="img" aria-label="System map. Three apps on the left talk to one Supabase project. Inside it, Auth, the data API, file storage and live updates sit in front of the Postgres database, where a security gate checks every request before data is saved. Edge Functions hold the secret keys and talk to Razorpay for the booking fee and to Firebase for push notifications.">
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--blue)"/></marker>
+            <marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--amber)"/></marker>
+          </defs>
+
+          <!-- Apps -->
+          <text class="t-zone" x="20" y="60">Apps</text>
+          <rect class="box" x="20" y="90" width="170" height="100" rx="14"/>
+          <text class="t-title" x="34" y="118">Business App</text>
+          <text class="t-sub" x="34" y="140">owner · manager · staff</text>
+          <text class="t-sub" x="34" y="158">Android &amp; iOS</text>
+          <text class="t-mono" x="34" y="177">holds: public key only</text>
+
+          <rect class="box" x="20" y="300" width="170" height="100" rx="14"/>
+          <text class="t-title" x="34" y="328">Admin Panel</text>
+          <text class="t-sub" x="34" y="350">you · admins · reviewers</text>
+          <text class="t-sub" x="34" y="368">web browser</text>
+          <text class="t-mono" x="34" y="387">holds: public key only</text>
+
+          <rect class="future" x="20" y="510" width="170" height="100" rx="14"/>
+          <text class="t-title" x="34" y="538">Retailer App</text>
+          <text class="t-sub" x="34" y="560">EV drivers · built later</text>
+          <text class="t-sub" x="34" y="578">backend is ready</text>
+
+          <!-- Supabase project -->
+          <rect class="zone" x="270" y="30" width="800" height="650" rx="20"/>
+          <text class="t-zone" x="290" y="58">Supabase project (your backend)</text>
+
+          <rect class="box" x="300" y="75" width="180" height="80" rx="12"/>
+          <text class="t-title" x="314" y="102">Auth</text>
+          <text class="t-sub" x="314" y="122">email + password login</text>
+          <text class="t-sub" x="314" y="140">issues signed login token</text>
+
+          <rect class="box" x="300" y="200" width="180" height="100" rx="12"/>
+          <text class="t-title" x="314" y="227">Data API</text>
+          <text class="t-sub" x="314" y="247">reads tables, runs actions</text>
+          <text class="t-sub" x="314" y="265">(RPC functions)</text>
+          <text class="t-mono" x="314" y="285">every call carries token</text>
+
+          <rect class="box" x="300" y="360" width="180" height="80" rx="12"/>
+          <text class="t-title" x="314" y="387">Storage</text>
+          <text class="t-sub" x="314" y="407">private document files</text>
+          <text class="t-sub" x="314" y="425">public station photos</text>
+
+          <rect class="box" x="300" y="500" width="180" height="80" rx="12"/>
+          <text class="t-title" x="314" y="527">Realtime</text>
+          <text class="t-sub" x="314" y="547">pushes changes to open</text>
+          <text class="t-sub" x="314" y="565">screens instantly</text>
+
+          <!-- Postgres -->
+          <rect class="box" x="570" y="70" width="300" height="590" rx="14"/>
+          <text class="t-title" x="585" y="96">Postgres database</text>
+          <rect class="gate" x="585" y="108" width="270" height="58" rx="10"/>
+          <text class="t-title" x="599" y="131" style="fill: var(--green)">Security gate</text>
+          <text class="t-sub" x="599" y="151">who is this? which role? allowed?</text>
+
+          <g class="hi-onb"><rect class="tbl" x="585" y="180" width="270" height="56" rx="10"/>
+          <text class="t-title" x="599" y="203" style="font-size:13.5px">People &amp; roles</text>
+          <text class="t-mono" x="599" y="223">profiles · business_members</text></g>
+
+          <g class="hi-onb"><rect class="tbl" x="585" y="244" width="270" height="56" rx="10"/>
+          <text class="t-title" x="599" y="267" style="font-size:13.5px">Businesses &amp; stations</text>
+          <text class="t-mono" x="599" y="287">stations · station_applications</text></g>
+
+          <g class="hi-book"><rect class="tbl" x="585" y="308" width="270" height="56" rx="10"/>
+          <text class="t-title" x="599" y="331" style="font-size:13.5px">Bookings</text>
+          <text class="t-mono" x="599" y="351">bookings · booking_events</text></g>
+
+          <g class="hi-book"><rect class="tbl" x="585" y="372" width="270" height="56" rx="10"/>
+          <text class="t-title" x="599" y="395" style="font-size:13.5px">Money</text>
+          <text class="t-mono" x="599" y="415">payments · ledger_entries</text></g>
+
+          <g class="hi-onb hi-book"><rect class="tbl" x="585" y="436" width="270" height="56" rx="10"/>
+          <text class="t-title" x="599" y="459" style="font-size:13.5px">Notifications</text>
+          <text class="t-mono" x="599" y="479">notifications · device_tokens</text></g>
+
+          <g class="hi-onb hi-book"><rect class="tbl" x="585" y="500" width="270" height="56" rx="10"/>
+          <text class="t-title" x="599" y="523" style="font-size:13.5px">Audit log</text>
+          <text class="t-mono" x="599" y="543">audit_logs · cannot be edited</text></g>
+
+          <g class="hi-book"><rect class="tbl" x="585" y="564" width="270" height="56" rx="10"/>
+          <text class="t-title" x="599" y="587" style="font-size:13.5px">Settings</text>
+          <text class="t-mono" x="599" y="607">₹12 fee · refund policy</text></g>
+
+          <!-- Edge Functions + scheduler -->
+          <rect class="box" x="900" y="200" width="150" height="280" rx="12"/>
+          <text class="t-title" x="914" y="227">Edge Functions</text>
+          <text class="t-sub" x="914" y="247">server code that holds</text>
+          <text class="t-sub" x="914" y="265">the secret keys</text>
+          <text class="t-mono" x="912" y="295" style="font-size:10px">create-order</text>
+          <text class="t-mono" x="912" y="314" style="font-size:10px">verify payment</text>
+          <text class="t-mono" x="912" y="333" style="font-size:10px">razorpay-webhook</text>
+          <text class="t-mono" x="912" y="352" style="font-size:10px">process-refunds</text>
+          <text class="t-mono" x="912" y="371" style="font-size:10px">dispatch-notifications</text>
+
+          <rect class="box" x="900" y="530" width="120" height="70" rx="12"/>
+          <text class="t-title" x="914" y="557">Scheduler</text>
+          <text class="t-sub" x="914" y="577">runs every minute</text>
+
+          <!-- Outside services -->
+          <text class="t-zone" x="1100" y="180">Outside services</text>
+          <rect class="ext" x="1100" y="200" width="200" height="90" rx="12"/>
+          <text class="t-title" x="1114" y="227">Razorpay</text>
+          <text class="t-sub" x="1114" y="247">collects the ₹12 booking fee</text>
+          <text class="t-sub" x="1114" y="265">never the charging fee</text>
+
+          <rect class="ext" x="1100" y="420" width="200" height="90" rx="12"/>
+          <text class="t-title" x="1114" y="447">Firebase (FCM)</text>
+          <text class="t-sub" x="1114" y="467">delivers push notifications</text>
+          <text class="t-sub" x="1114" y="485">to phones</text>
+
+          <!-- Shared paths, both journeys -->
+          <g class="flow" data-step="always">
+            <path class="arrow" d="M480 232 H530 V150 H581" marker-end="url(#ah)"/>
+            <text class="t-label" x="505" y="224" text-anchor="middle">token</text>
+            <path class="arrow auto" d="M960 530 V484" marker-end="url(#ah)"/>
+            <text class="t-label" x="968" y="512">triggers</text>
+            <path class="arrow auto" d="M855 464 H896" marker-end="url(#ah)"/>
+            <text class="t-label" x="876" y="456" text-anchor="middle">queue</text>
+            <path class="arrow auto" d="M1050 455 H1096" marker-end="url(#ah)"/>
+            <text class="t-label" x="1073" y="447" text-anchor="middle">send</text>
+            <path class="arrow auto" d="M1300 465 H1318 V12 H105 V86" marker-end="url(#ah)"/>
+          </g>
+
+          <!-- Onboarding journey -->
+          <g class="flow onboarding" data-step="1">
+            <path class="arrow" d="M190 112 H296" marker-end="url(#ah)"/>
+            <text class="t-label" x="252" y="104" text-anchor="middle">sign up</text>
+            <g class="num"><circle cx="212" cy="112" r="10"/><text x="212" y="112">1</text></g>
+            <path class="arrow" d="M480 125 H581" marker-end="url(#ah)"/>
+            <text class="t-label" x="530" y="117" text-anchor="middle">new account</text>
+          </g>
+          <g class="flow onboarding" data-step="2">
+            <path class="arrow" d="M190 160 H240 V238 H296" marker-end="url(#ah)"/>
+            <g class="num"><circle cx="240" cy="190" r="10"/><text x="240" y="190">2</text></g>
+            <g class="num"><circle cx="240" cy="214" r="10"/><text x="240" y="214">4</text></g>
+            <text class="t-label" x="268" y="254" text-anchor="middle">station</text>
+          </g>
+          <g class="flow onboarding" data-step="3">
+            <path class="arrow" d="M190 180 H222 V400 H296" marker-end="url(#ah)"/>
+            <g class="num"><circle cx="222" cy="270" r="10"/><text x="222" y="270">3</text></g>
+            <text class="t-label" x="262" y="392" text-anchor="middle">documents</text>
+            <path class="arrow" d="M480 400 H548 V286 H581" marker-end="url(#ah)"/>
+            <text class="t-label" x="514" y="392" text-anchor="middle">file record</text>
+          </g>
+          <g class="flow onboarding" data-step="5">
+            <path class="arrow auto" d="M585 470 H556 V540 H484" marker-end="url(#ah)"/>
+            <path class="arrow auto" d="M300 540 H252 V455 H105 V404" marker-end="url(#ah)"/>
+            <g class="num"><circle cx="180" cy="455" r="10"/><text x="180" y="455">5</text></g>
+            <text class="t-label" x="276" y="532" text-anchor="middle">alert</text>
+          </g>
+          <g class="flow onboarding" data-step="6">
+            <path class="arrow" d="M190 325 H268 V285 H296" marker-end="url(#ah)"/>
+            <g class="num"><circle cx="214" cy="325" r="10"/><text x="214" y="325">6</text></g>
+            <g class="num"><circle cx="240" cy="325" r="10"/><text x="240" y="325">7</text></g>
+            <text class="t-label" x="226" y="313" text-anchor="middle">review</text>
+            <path class="arrow" d="M190 380 H268 V425 H296" marker-end="url(#ah)"/>
+            <text class="t-label" x="228" y="372" text-anchor="middle">view docs</text>
+          </g>
+          <g class="flow onboarding" data-step="8">
+            <g class="num"><circle cx="700" cy="12" r="10"/><text x="700" y="12">8</text></g>
+            <text class="t-label" x="720" y="16">push: "Station approved"</text>
+          </g>
+
+          <!-- Booking journey -->
+          <g class="flow booking" data-step="1">
+            <path class="arrow" d="M190 545 H262 V280 H296" marker-end="url(#ah)"/>
+            <g class="num"><circle cx="262" cy="470" r="10"/><text x="262" y="470">1</text></g>
+            <text class="t-label" x="226" y="537" text-anchor="middle">reserve</text>
+          </g>
+          <g class="flow booking" data-step="2">
+            <path class="arrow money" d="M90 612 V692 H1035 V484" marker-end="url(#ahm)"/>
+            <g class="num money"><circle cx="560" cy="692" r="10"/><text x="560" y="692">2</text></g>
+            <text class="t-label" x="580" y="686">start payment</text>
+            <path class="arrow money" d="M1050 240 H1096" marker-end="url(#ahm)"/>
+            <text class="t-label" x="1073" y="232" text-anchor="middle">order</text>
+          </g>
+          <g class="flow booking" data-step="3">
+            <path class="arrow money" d="M140 612 V716 H1318 V245 H1304" marker-end="url(#ahm)"/>
+            <g class="num money"><circle cx="760" cy="716" r="10"/><text x="760" y="716">3</text></g>
+            <text class="t-label" x="780" y="730">driver pays ₹12 in Razorpay Checkout</text>
+          </g>
+          <g class="flow booking" data-step="4">
+            <path class="arrow money auto" d="M1100 272 H1054" marker-end="url(#ahm)"/>
+            <text class="t-label" x="1077" y="288" text-anchor="middle">paid</text>
+            <path class="arrow money" d="M900 400 H859" marker-end="url(#ahm)"/>
+            <g class="num money"><circle cx="880" cy="400" r="10"/><text x="880" y="400">4</text></g>
+          </g>
+          <g class="flow booking" data-step="5">
+            <path class="arrow auto" d="M585 336 H548 V560 H484" marker-end="url(#ah)"/>
+            <path class="arrow auto" d="M300 560 H282 V178 H194" marker-end="url(#ah)"/>
+            <g class="num"><circle cx="548" cy="450" r="10"/><text x="548" y="450">5</text></g>
+            <text class="t-label" x="236" y="200" text-anchor="middle">live</text>
+          </g>
+          <g class="flow booking" data-step="6">
+            <path class="arrow" d="M190 135 H250 V215 H296" marker-end="url(#ah)"/>
+            <g class="num"><circle cx="220" cy="135" r="10"/><text x="220" y="135">6</text></g>
+            <text class="t-label" x="220" y="122" text-anchor="middle">check in</text>
+          </g>
+          <g class="flow booking" data-step="7">
+            <text class="t-label" x="720" y="16">push: "New booking at your station"</text>
+          </g>
+        </svg>
+        <figcaption id="cap">Station onboarding: the owner's requests go left to right into Supabase; nothing is saved until the security gate has checked who is asking. The admin's approval comes back to the owner's phone as a push notification.</figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <section aria-labelledby="walk">
+    <h2 id="walk">Step by step</h2>
+    <ol class="steps" id="steps-onb">
+      <li data-step="1"><div class="row"><span class="n">1</span><h3>Owner signs up</h3></div>
+        <p>The owner creates an account in the Business App with email and password. Supabase Auth confirms the email with a link or 6-digit code, then gives the phone a signed login token. The app sends this token with every later request, and refreshes it automatically.</p>
+        <p class="stored"><b>Saved in:</b> Supabase Auth user list (password stored only as a secure hash) and <code>profiles</code> (name, phone).</p></li>
+      <li data-step="2"><div class="row"><span class="n">2</span><h3>Creates the business and a station</h3></div>
+        <p>The app asks the database to create the business. The database reads the user id from the token and makes that person the <b>owner</b>. The app cannot pick its own role. A new station always starts as a <b>draft</b> with an empty application.</p>
+        <p class="stored"><b>Saved in:</b> <code>businesses</code>, <code>business_members</code>, <code>stations</code>, <code>charging_points</code>, <code>station_operating_hours</code>, <code>station_applications</code>.</p></li>
+      <li data-step="3"><div class="row"><span class="n">3</span><h3>Uploads documents</h3></div>
+        <p>Files go to a <b>private</b> storage folder for that business, with a random file name. Only members of that business and platform reviewers can open it. A row in the database points at the file.</p>
+        <p class="stored"><b>Saved in:</b> Storage <code>station-documents/{business}/{station}/…</code> and the table <code>station_documents</code>.</p></li>
+      <li data-step="4"><div class="row"><span class="n">4</span><h3>Submits for review</h3></div>
+        <p>The database checks that the station has at least one charging point, opening hours and every required document. If anything is missing, it refuses with a plain message. If all is there, the status becomes <b>Submitted</b> and every reviewer gets a notification.</p>
+        <p class="stored"><b>Saved in:</b> <code>station_applications</code> (status), <code>application_events</code> (timeline), <code>notifications</code>.</p></li>
+      <li data-step="5"><div class="row"><span class="n">5</span><h3>Admin Panel shows it live</h3></div>
+        <p>Realtime pushes the new notification to any open Admin Panel, and the application appears in the review queue. Only platform staff with the review permission can see the queue.</p>
+        <p class="stored"><b>Read from:</b> <code>notifications</code>, <code>station_applications</code>. Nothing new is saved.</p></li>
+      <li data-step="6"><div class="row"><span class="n">6</span><h3>Reviewer checks documents</h3></div>
+        <p>A reviewer signs in to the Admin Panel the same way, through Auth. Each document opens through a link that expires after 5 minutes. The reviewer approves it or asks for a correction with a note. Nobody can review a business they belong to.</p>
+        <p class="stored"><b>Saved in:</b> <code>document_reviews</code> (permanent history) and the status on <code>station_documents</code>.</p></li>
+      <li data-step="6"><div class="row"><span class="n">7</span><h3>Admin approves</h3></div>
+        <p>An admin with the decide permission approves the application, or rejects it with a reason. On approval the station becomes <b>Active</b> and the business becomes verified. The audit log records who did it and when.</p>
+        <p class="stored"><b>Saved in:</b> <code>station_applications</code>, <code>stations</code>, <code>businesses</code>, <code>audit_logs</code>, <code>notifications</code>.</p></li>
+      <li data-step="8"><div class="row"><span class="n">8</span><h3>Owner gets a push</h3></div>
+        <p>Every minute the scheduler runs the notification sender. It reads the waiting notifications and sends them through Firebase to the phones registered for that business. The notification also appears in the app's list, even when push is off. The station can now take bookings.</p>
+        <p class="stored"><b>Read from:</b> <code>notifications</code>, <code>device_tokens</code>. Each message is marked as sent.</p></li>
+    </ol>
+
+    <ol class="steps" id="steps-book" hidden>
+      <li data-step="1"><div class="row"><span class="n">1</span><h3>Driver reserves a slot</h3></div>
+        <p>A signed-in driver picks a charging point and time. The database holds the slot for 10 minutes while they pay. A database rule makes it impossible for two bookings to overlap on the same point, even when two people tap at the same moment.</p>
+        <p class="stored"><b>Saved in:</b> <code>bookings</code> (status <i>payment pending</i>), <code>booking_events</code>.</p></li>
+      <li data-step="2" class="money"><div class="row"><span class="n">2</span><h3>Payment starts</h3></div>
+        <p>The app asks an Edge Function to start payment. The function reads the fee from the database (₹12 today), never from the phone. It then creates a Razorpay order using the secret key, which only the server holds.</p>
+        <p class="stored"><b>Saved in:</b> <code>payment_orders</code>. Fee comes from <code>platform_settings</code>.</p></li>
+      <li data-step="3" class="money"><div class="row"><span class="n">3</span><h3>Driver pays ₹12</h3></div>
+        <p>The driver pays in Razorpay's own checkout screen, by UPI or card. ChargeKaro never sees card details. The charging fee is not part of this payment: the driver pays the station directly.</p>
+        <p class="stored"><b>Saved at:</b> Razorpay. ChargeKaro stores only the payment and order IDs.</p></li>
+      <li data-step="4" class="money"><div class="row"><span class="n">4</span><h3>Payment is recorded once</h3></div>
+        <p>Razorpay notifies the webhook, and the app also asks for verification. Both check Razorpay's signature, and the payment is recorded only once even if both arrive. The booking becomes <b>Confirmed</b> and the ledger adds the fee in paise, minus Razorpay's fee.</p>
+        <p class="stored"><b>Saved in:</b> <code>payments</code>, <code>ledger_entries</code>, <code>bookings</code>, <code>booking_events</code>, <code>notifications</code>.</p></li>
+      <li data-step="5"><div class="row"><span class="n">5</span><h3>Station sees it live</h3></div>
+        <p>Realtime updates the Bookings screen on the staff's phone straight away. Staff also get a push notification through Firebase.</p>
+        <p class="stored"><b>Read from:</b> <code>booking_events</code> (only for stations that staff member is assigned to).</p></li>
+      <li data-step="6"><div class="row"><span class="n">6</span><h3>Staff check the driver in</h3></div>
+        <p>Staff scan the driver's QR code or type the booking code. The database checks four things: the booking belongs to this station, the staff member is assigned there, the fee is paid, and it is inside the check-in window. The car then charges, and the driver pays the station directly.</p>
+        <p class="stored"><b>Saved in:</b> <code>check_ins</code>, <code>bookings</code> (status), <code>booking_events</code>.</p></li>
+      <li data-step="7"><div class="row"><span class="n">7</span><h3>Background clean-up</h3></div>
+        <p>Every minute the scheduler releases unpaid holds and marks no-shows after the grace period. It also sends any due refunds to Razorpay under the refund policy.</p>
+        <p class="stored"><b>Saved in:</b> <code>bookings</code>, <code>refunds</code>, <code>ledger_entries</code>.</p></li>
+    </ol>
+  </section>
+
+  <section aria-labelledby="gate">
+    <h2 id="gate">How every request is checked</h2>
+    <p class="note">This is what the green security gate in the map does. Every request takes this path, whether from the Business App, the Admin Panel or the future Retailer App.</p>
+    <ol class="check">
+      <li><strong>1 · Token attached</strong>The app sends its login token. Without one, the request is treated as anonymous and can read nothing.</li>
+      <li><strong>2 · Token verified</strong>Supabase checks the token's signature and expiry. A forged or old token is rejected.</li>
+      <li><strong>3 · User identified</strong>The database learns the user id from the token, and nothing else from the phone is trusted.</li>
+      <li><strong>4 · Role looked up</strong>The role comes from the database (<code>business_members</code>, <code>platform_staff</code>), never from the app. A changed app cannot claim admin.</li>
+      <li><strong>5 · Rule applied</strong>Row-level security filters what they can read. Actions like approve or check in re-check permission and status.</li>
+      <li class="stop"><strong>6 · Saved &amp; logged</strong>The change is written, and sensitive actions add a row to the audit log, which nobody can edit.</li>
+    </ol>
+  </section>
+
+  <section aria-labelledby="where">
+    <h2 id="where">Where each kind of data lives</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Data</th><th>Stored in</th><th>Who can see it</th></tr></thead>
+        <tbody>
+          <tr><td>Login (email, password)</td><td>Supabase Auth; password kept only as a hash</td><td>Nobody can read the password, including ChargeKaro</td></tr>
+          <tr><td>Name, phone</td><td><code>profiles</code></td><td>The person, their business owner, platform staff</td></tr>
+          <tr><td>Roles</td><td><code>business_members</code>, <code>station_assignments</code>, <code>platform_staff</code></td><td>Changed only by an owner (their team) or a super admin</td></tr>
+          <tr><td>Business &amp; station details</td><td><code>businesses</code>, <code>stations</code>, <code>charging_points</code></td><td>That business's team; drivers see only active stations</td></tr>
+          <tr><td>Licences and documents</td><td>Private Storage bucket + <code>station_documents</code></td><td>That business and reviewers, through 5-minute links</td></tr>
+          <tr><td>Station photos</td><td>Public Storage bucket</td><td>Anyone (shown to drivers)</td></tr>
+          <tr><td>Bookings</td><td><code>bookings</code>, <code>booking_events</code>, <code>check_ins</code></td><td>The driver, staff of that station, admins</td></tr>
+          <tr><td>Payments &amp; refunds</td><td><code>payments</code>, <code>refunds</code>, <code>ledger_entries</code> (amounts in paise)</td><td>Finance staff; written only by Edge Functions</td></tr>
+          <tr><td>Card / UPI details</td><td>Razorpay only</td><td>Never stored by ChargeKaro</td></tr>
+          <tr><td>Notifications</td><td><code>notifications</code>, <code>device_tokens</code></td><td>The person they are for</td></tr>
+          <tr><td>Who did what</td><td><code>audit_logs</code> (cannot be edited or deleted)</td><td>Staff with audit permission</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="keys">
+    <h2 id="keys">Keys and connections</h2>
+    <div class="two">
+      <div class="card">
+        <h3>Safe to put inside the apps</h3>
+        <ul>
+          <li>Supabase project URL</li>
+          <li>Supabase <b>publishable (anon) key</b>. It only lets the app talk to the gate, and the gate decides everything.</li>
+          <li>Google Maps key, restricted to the app's package name</li>
+          <li>Firebase app config files</li>
+        </ul>
+      </div>
+      <div class="card secret">
+        <h3>Server only, never in an app or on GitHub</h3>
+        <ul>
+          <li>Supabase <b>service-role key</b>, used only inside Edge Functions</li>
+          <li>Razorpay key secret and webhook secret</li>
+          <li>Firebase service account (for sending push)</li>
+          <li>Scheduler secret, which protects the background functions</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">Secrets are added once with <code>supabase secrets set</code> on your Supabase project. The apps refuse to start if someone builds them with a secret key by mistake.</p>
+  </section>
+</div>
+
+<script>
+(function () {
+  var fig = document.getElementById('fig');
+  var cap = document.getElementById('cap');
+  var lists = { onb: document.getElementById('steps-onb'), book: document.getElementById('steps-book') };
+  var captions = {
+    onb: "Station onboarding: the owner's requests go left to right into Supabase; nothing is saved until the security gate has checked who is asking. The admin's approval comes back to the owner's phone as a push notification.",
+    book: "Driver booking: the ₹12 fee (orange) goes through Edge Functions and Razorpay because they need secret keys. The confirmed booking reaches the station's phone instantly through Realtime, then staff check the driver in."
+  };
+  function setMode(mode) {
+    fig.className = 'mode-' + mode;
+    cap.textContent = captions[mode];
+    lists.onb.hidden = mode !== 'onb';
+    lists.book.hidden = mode !== 'book';
+    document.querySelectorAll('.switch button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.mode === mode)); });
+    clear();
+    try { localStorage.setItem('ck-flow-mode', mode); } catch (e) {}
+  }
+  function flows() { return fig.querySelectorAll('.flow:not([data-step="always"])'); }
+  function clear() { flows().forEach(function (g) { g.classList.remove('dim', 'focus'); }); }
+  function focus(step) {
+    var visible = fig.className === 'mode-onb' ? '.onboarding' : '.booking';
+    fig.querySelectorAll('.flow' + visible).forEach(function (g) {
+      var hit = g.dataset.step === step;
+      g.classList.toggle('focus', hit);
+      g.classList.toggle('dim', !hit);
+    });
+  }
+  document.querySelectorAll('.switch button').forEach(function (b) { b.addEventListener('click', function () { setMode(b.dataset.mode); }); });
+  Object.keys(lists).forEach(function (k) {
+    lists[k].querySelectorAll('li').forEach(function (li) {
+      li.tabIndex = 0;
+      li.addEventListener('mouseenter', function () { focus(li.dataset.step); });
+      li.addEventListener('focus', function () { focus(li.dataset.step); });
+      li.addEventListener('mouseleave', clear);
+      li.addEventListener('blur', clear);
+    });
+  });
+  var saved = null;
+  try { saved = localStorage.getItem('ck-flow-mode'); } catch (e) {}
+  var hash = (location.hash || '').replace('#', '');
+  setMode(hash === 'booking' ? 'book' : hash === 'onboarding' ? 'onb' : (saved === 'book' ? 'book' : 'onb'));
+})();
+</script>

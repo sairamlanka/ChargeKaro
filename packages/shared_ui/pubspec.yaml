@@ -20,3 +20,20 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
+
+flutter:
+  fonts:
+    # Plus Jakarta Sans (SIL Open Font License 1.1, see fonts/OFL.txt).
+    # Latin + Latin Extended subsets, which include the rupee sign.
+    - family: PlusJakartaSans
+      fonts:
+        - asset: fonts/PlusJakartaSans-400.ttf
+          weight: 400
+        - asset: fonts/PlusJakartaSans-500.ttf
+          weight: 500
+        - asset: fonts/PlusJakartaSans-600.ttf
+          weight: 600
+        - asset: fonts/PlusJakartaSans-700.ttf
+          weight: 700
+        - asset: fonts/PlusJakartaSans-800.ttf
+          weight: 800

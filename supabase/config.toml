@@ -257,7 +257,9 @@ otp_expiry = 3600
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.
-enable_signup = false
+# On: the Retail App creates a customer account from a verified phone number
+# when a guest books (needs an SMS provider in the hosted project).
+enable_signup = true
 # If enabled, users need to confirm their phone number before signing in.
 enable_confirmations = false
 # Template for sending OTP to users
@@ -432,4 +434,11 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.dispatch-notifications]
+verify_jwt = false
+
+# Retail App area search; guests call it with the publishable key.
+[functions.geocode-area]
+verify_jwt = false
+
+[functions.dispatch-customer-messages]
 verify_jwt = false

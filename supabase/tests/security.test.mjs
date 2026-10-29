@@ -36,6 +36,15 @@ describe('anonymous access', () => {
   test('anon cannot execute RPCs', async () => {
     await rejectsWith(as('anon', (q) => q(`select public.my_platform_access()`)), { sqlstate: '42501' });
   });
+  test('no public or private function is executable by PUBLIC', async () => {
+    // Per-schema default privileges do not remove the global PUBLIC grant, so
+    // every function must be revoked explicitly.
+    const rows = await sql(`select p.oid::regprocedure::text as fn from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname in ('public', 'private')
+        and (p.proacl is null or array_to_string(p.proacl, ',') ~ '(^|,)=X')`);
+    assert.deepEqual(rows.map((r) => r.fn), []);
+  });
 });
 
 describe('cross-business isolation', () => {
