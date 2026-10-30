@@ -9,12 +9,16 @@ import 'app.dart';
 import 'data/local_store.dart';
 import 'state/providers.dart';
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // The logo shows for 3 seconds while the app starts up behind it.
+  runApp(const SplashGate(load: _start));
+}
+
+Future<Widget> _start() async {
   final config = AppConfig.fromEnvironment();
   if (!config.isUsable) {
-    runApp(MaterialApp(theme: AppTheme.light(), home: SetupRequiredScreen(appName: 'ChargeKaro', problems: config.problems)));
-    return;
+    return MaterialApp(theme: AppTheme.light(), home: SetupRequiredScreen(appName: 'ChargeKaro', problems: config.problems));
   }
   await Future.wait([initializeDateFormatting('en_IN'), initializeDateFormatting('te')]);
   await Supabase.initialize(url: config.supabaseUrl, publishableKey: config.supabaseKey);
@@ -25,7 +29,7 @@ Future<void> main() async {
     // Storage blocked (private browsing): keep working without memory.
     store = await LocalStore.memory();
   }
-  runApp(ProviderScope(
+  return ProviderScope(
     // Screens decide when to retry; automatic retries would hide failures.
     retry: (_, _) => null,
     overrides: [
@@ -34,5 +38,5 @@ Future<void> main() async {
       localStoreProvider.overrideWithValue(store),
     ],
     child: const RetailApp(),
-  ));
+  );
 }

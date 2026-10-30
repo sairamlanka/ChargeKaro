@@ -7,12 +7,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app.dart';
 import 'push.dart';
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // The logo shows for 3 seconds while the app starts up behind it.
+  runApp(const SplashGate(load: _start));
+}
+
+Future<Widget> _start() async {
   final config = AppConfig.fromEnvironment();
   if (!config.isUsable) {
-    runApp(MaterialApp(theme: AppTheme.light(), home: SetupRequiredScreen(appName: 'ChargeKaro Business', problems: config.problems)));
-    return;
+    return MaterialApp(theme: AppTheme.light(), home: SetupRequiredScreen(appName: 'ChargeKaro Business', problems: config.problems));
   }
   await Supabase.initialize(
     url: config.supabaseUrl,
@@ -20,11 +24,11 @@ Future<void> main() async {
     authOptions: const FlutterAuthClientOptions(authFlowType: AuthFlowType.pkce),
   );
   await Push.initialize();
-  runApp(ProviderScope(
+  return ProviderScope(
     overrides: [
       appConfigProvider.overrideWithValue(config),
       supabaseClientProvider.overrideWithValue(Supabase.instance.client),
     ],
     child: const BusinessApp(),
-  ));
+  );
 }
