@@ -16,7 +16,7 @@ val keystoreProps = Properties().apply {
 }
 
 android {
-    namespace = "`in`.chargekaro.business_app"
+    namespace = "in.chargekaro.business_app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -26,7 +26,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "`in`.chargekaro.business"
+        applicationId = "in.chargekaro.business"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
