@@ -322,6 +322,7 @@ const en = <K, String>{
   K.mobileNumber: 'Mobile number',
   K.mobileRequired: 'Mobile number is required',
   K.mobileVerifiedHelper: 'Verified on this device',
+  K.completeProfileNotice: "You're signed in. We just need a little more before booking.",
   K.modeLive: 'Near Me',
   K.modeRoute: 'Along My Route',
   K.moreStationsNote: 'Showing the {n} stations closest to the road, out of {total} along this trip. Pick a smaller distance from the route to narrow the list.',

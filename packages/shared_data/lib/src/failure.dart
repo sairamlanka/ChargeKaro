@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show SocketException;
 
+import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -161,11 +162,29 @@ class AppFailure implements Exception {
   };
 }
 
-/// Runs [body] and rethrows any error as an [AppFailure].
-Future<T> guard<T>(Future<T> Function() body) async {
+final _log = Logger('Repository');
+
+/// Runs [body] and rethrows any error as an [AppFailure], logging it to [log]
+/// (or the `Repository` logger) as [what].
+Future<T> guard<T>(Future<T> Function() body, {Logger? log, String what = 'call'}) async {
   try {
     return await body();
-  } catch (e) {
-    throw AppFailure.from(e);
+  } catch (e, stack) {
+    final failure = AppFailure.from(e);
+    logFailure(log ?? _log, what, failure, e, stack);
+    throw failure;
+  }
+}
+
+/// Expected outcomes (validation, conflicts, a missing sign-in) are WARN;
+/// network, server and unknown errors are ERROR, with the original error and
+/// stack trace so the cause can be traced.
+void logFailure(Logger log, String what, AppFailure failure, [Object? cause, StackTrace? stack]) {
+  final text = '$what failed: ${failure.kind.name}/${failure.code}${failure.detail == null ? '' : ' (${failure.detail})'}';
+  switch (failure.kind) {
+    case FailureKind.network || FailureKind.server || FailureKind.unknown:
+      log.severe(text, identical(cause, failure) ? null : cause, stack);
+    default:
+      log.warning(text);
   }
 }

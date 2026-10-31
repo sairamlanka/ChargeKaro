@@ -13,8 +13,10 @@ class RangePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final days = value.to.difference(value.from).inDays + 1;
-    return Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+    return Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
       SegmentedButton<int>(
+        showSelectedIcon: false,
+        style: const ButtonStyle(visualDensity: VisualDensity.compact),
         segments: const [
           ButtonSegment(value: 7, label: Text('7 d')),
           ButtonSegment(value: 30, label: Text('30 d')),

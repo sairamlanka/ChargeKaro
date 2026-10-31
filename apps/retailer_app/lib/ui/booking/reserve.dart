@@ -12,20 +12,67 @@ import '../../state/providers.dart';
 import '../common/fallback.dart';
 import 'flow_widgets.dart';
 
+/// A name the booking can be made under: two characters or more, with at
+/// least one letter.
+bool isValidName(String name) {
+  final s = name.trim();
+  return s.length >= 2 && RegExp(r"[A-Za-zఀ-౿]").hasMatch(s);
+}
+
+/// Moves on from the slot picker. A guest (or a session without a verified
+/// mobile) fills in the details and verifies the number. A signed-in
+/// customer skips both: their profile supplies the contact details and the
+/// time is reserved straight away, unless the profile lacks a name or the
+/// current terms were never accepted, in which case only those are asked.
+Future<void> continueBooking(BuildContext context, WidgetRef ref) async {
+  final repo = ref.read(retailRepositoryProvider);
+  final phone = repo.sessionPhone;
+  if (!repo.signedIn || phone == null) {
+    await context.push('/book/details');
+    return;
+  }
+  CustomerProfile? profile;
+  bool accepted;
+  try {
+    profile = await ref.read(profileProvider.future);
+    accepted = await ref.read(termsAcceptedProvider.future);
+  } catch (_) {
+    // Can't tell what is on file: the details screen asks for what it needs.
+    if (context.mounted) await context.push('/book/details?only=name,terms');
+    return;
+  }
+  final name = profile?.fullName?.trim() ?? '';
+  final only = [if (!isValidName(name)) 'name', if (!accepted) 'terms'];
+  if (!context.mounted) return;
+  if (only.isNotEmpty) {
+    await context.push('/book/details?only=${only.join(',')}');
+    return;
+  }
+  final flow = ref.read(bookingFlowProvider.notifier);
+  final d = ref.read(bookingFlowProvider);
+  flow.setContact(fullName: name, phone: phone, email: profile?.contactEmail ?? '', vehicleLabel: d?.vehicleLabel ?? '');
+  flow.setConsents(terms: true, marketing: d?.marketingOptIn ?? false);
+  // Already on record: recording again would also reset a marketing opt-in.
+  await reserveDraft(context, ref, recordConsents: false);
+}
+
 /// Reserves the chosen time once the number is verified and goes straight
 /// to the payment page, which shows the fee and the summary. The server
 /// assigns the point and re-checks the slot; the idempotency key means a
 /// retry never books twice. A free booking is confirmed straight away.
 /// Returns false when the hold failed (the reason is shown in a sheet).
-Future<bool> reserveDraft(BuildContext context, WidgetRef ref) async {
+Future<bool> reserveDraft(BuildContext context, WidgetRef ref, {bool recordConsents = true}) async {
   final d = ref.read(bookingFlowProvider);
   if (d == null) return false;
   final repo = ref.read(retailRepositoryProvider);
   final flow = ref.read(bookingFlowProvider.notifier);
   try {
-    final BookingTerms? terms = await ref.read(termsProvider.future).then<BookingTerms?>((t) => t).catchError((_) => null);
-    if (terms != null) {
-      await repo.recordConsents(version: terms.termsVersion, terms: d.termsAccepted, marketing: d.marketingOptIn).catchError((_) {});
+    if (recordConsents) {
+      final BookingTerms? terms = await ref.read(termsProvider.future).then<BookingTerms?>((t) => t).catchError((_) => null);
+      if (terms != null) {
+        await repo.recordConsents(version: terms.termsVersion, terms: d.termsAccepted, marketing: d.marketingOptIn).catchError((_) {});
+        ref.invalidate(termsAcceptedProvider);
+      }
     }
     final b = await repo.createHold(
       stationId: d.stationId,

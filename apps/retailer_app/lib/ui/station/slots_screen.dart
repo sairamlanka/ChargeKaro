@@ -10,6 +10,7 @@ import '../../data/models.dart';
 import '../../l10n/l10n.dart';
 import '../../state/booking_flow.dart';
 import '../../state/providers.dart';
+import '../booking/reserve.dart';
 import '../common/fallback.dart';
 import '../common/format.dart';
 import '../common/widgets.dart';
@@ -246,9 +247,9 @@ class _SlotsScreenState extends ConsumerState<SlotsScreen> {
           end: end,
           feePaise: grid.bookingFee.paise,
         );
-    _continuing = true;
-    await context.push('/book/details');
-    _continuing = false;
+    setState(() => _continuing = true);
+    await continueBooking(context, ref);
+    if (mounted) setState(() => _continuing = false);
   }
 
   @override
@@ -333,7 +334,7 @@ class _SlotsScreenState extends ConsumerState<SlotsScreen> {
                   ]),
                 ),
                 const SizedBox(width: 12),
-                GradientButton(label: l(K.continueLabel), icon: Icons.arrow_forward_rounded, onPressed: () => _continue(detail, grid)),
+                GradientButton(label: l(K.continueLabel), icon: Icons.arrow_forward_rounded, busy: _continuing, onPressed: () => _continue(detail, grid)),
               ]),
             )
           : null,

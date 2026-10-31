@@ -323,6 +323,7 @@ const te = <K, String>{
   K.mobileNumber: 'మొబైల్ నంబర్',
   K.mobileRequired: 'మొబైల్ నంబర్ తప్పనిసరి',
   K.mobileVerifiedHelper: 'ఈ పరికరంలో ధృవీకరించబడింది',
+  K.completeProfileNotice: 'మీరు సైన్ ఇన్ అయ్యారు. బుక్ చేసే ముందు మరికొన్ని వివరాలు కావాలి.',
   K.modeLive: 'నా దగ్గర',
   K.modeRoute: 'నా మార్గంలో',
   K.moreStationsNote: 'ఈ ప్రయాణంలోని {total} స్టేషన్లలో రోడ్డుకు దగ్గరగా ఉన్న {n} చూపిస్తున్నాం. జాబితా తగ్గించడానికి మార్గం నుండి తక్కువ దూరం ఎంచుకోండి.',

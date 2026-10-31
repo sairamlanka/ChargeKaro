@@ -440,5 +440,9 @@ verify_jwt = false
 [functions.geocode-area]
 verify_jwt = false
 
+# Customer App routing (Along My Route, Near Me distances); guests call it too.
+[functions.route-plan]
+verify_jwt = false
+
 [functions.dispatch-customer-messages]
 verify_jwt = false

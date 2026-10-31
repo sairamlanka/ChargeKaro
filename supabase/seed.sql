@@ -88,9 +88,9 @@ insert into public.station_assignments (member_id, station_id)
 values ('00000000-0000-4000-b100-000000000002', '00000000-0000-4000-c000-000000000001')
 on conflict do nothing;
 
--- 06:00 to 23:00 every day.
+-- Open 24 hours every day.
 insert into public.station_operating_hours (station_id, day_of_week, opens_minute, closes_minute)
-select s, d, 360, 1380
+select s, d, 0, 1440
   from unnest(array['00000000-0000-4000-c000-000000000001'::uuid, '00000000-0000-4000-c000-000000000002'::uuid]) s,
        generate_series(1, 7) d
 on conflict do nothing;
@@ -166,7 +166,7 @@ values
 on conflict do nothing;
 
 insert into public.station_operating_hours (station_id, day_of_week, opens_minute, closes_minute)
-select '00000000-0000-4000-c000-000000000003'::uuid, d, 360, 1380 from generate_series(1, 7) d
+select '00000000-0000-4000-c000-000000000003'::uuid, d, 0, 1440 from generate_series(1, 7) d
 on conflict do nothing;
 
 insert into public.charging_points (id, station_id, code, name, current_type, max_power_kw, vehicle_compatibility,
@@ -243,3 +243,62 @@ update public.station_applications
        submitted_by = '00000000-0000-4000-a000-000000000011', decided_at = now() - interval '1 day',
        decided_by = '00000000-0000-4000-a000-000000000001'
  where station_id::text like '00000000-0000-4000-c000-0000000001%' and status = 'draft';
+
+-- Five more Hyderabad city stations so the Nearby list has something to show
+-- around the city. Open 24 hours, one DC fast and one AC point each.
+insert into public.stations (id, business_id, name, description, address_line1, city, district, state, postal_code,
+                             latitude, longitude, contact_phone, parking_spaces, amenities, accepted_payment_methods,
+                             status, approved_at, approved_by)
+select ('00000000-0000-4000-c000-0000000002' || lpad(n::text, 2, '0'))::uuid, '00000000-0000-4000-b000-000000000001',
+       '[DEMO] Green Volt ' || area, 'Hyderabad city test station (' || area || ').', road, 'Hyderabad', district, 'Telangana', pin,
+       lat, lng, '+9198000002' || lpad(n::text, 2, '0'), 4, array['restroom', 'cafe', 'cctv'], array['upi', 'debit_card', 'cash'],
+       'active', now(), '00000000-0000-4000-a000-000000000001'
+  from (values
+    (1, 'HITEC City',   'Cyber Towers Road, Madhapur',      'Rangareddy',          '500081', 17.447400, 78.376200),
+    (2, 'Gachibowli',   'Old Mumbai Highway, Gachibowli',   'Rangareddy',          '500032', 17.440100, 78.348900),
+    (3, 'Kukatpally',   'JNTU Road, KPHB Colony',           'Medchal-Malkajgiri',  '500072', 17.484900, 78.413800),
+    (4, 'Secunderabad', 'Sarojini Devi Road, Secunderabad', 'Hyderabad',           '500003', 17.439900, 78.498300),
+    (5, 'LB Nagar',     'Vijayawada Highway, LB Nagar',     'Rangareddy',          '500074', 17.345700, 78.552200)
+  ) as t(n, area, road, district, pin, lat, lng)
+on conflict do nothing;
+
+insert into public.station_operating_hours (station_id, day_of_week, opens_minute, closes_minute)
+select ('00000000-0000-4000-c000-0000000002' || lpad(n::text, 2, '0'))::uuid, d, 0, 1440
+  from generate_series(1, 5) n, generate_series(1, 7) d
+on conflict do nothing;
+
+insert into public.charging_points (id, station_id, code, name, current_type, max_power_kw, vehicle_compatibility,
+                                    telemetry_capability)
+select ('00000000-0000-4000-d000-00000002' || lpad(n::text, 2, '0') || p.suffix)::uuid,
+       ('00000000-0000-4000-c000-0000000002' || lpad(n::text, 2, '0'))::uuid,
+       'H' || n || '-' || p.code, p.name, p.kind::public.current_type, p.kw, p.vehicles, 'none'
+  from generate_series(1, 5) n,
+       (values ('01', 'DC1', 'DC fast 1', 'dc', 60::numeric, array['four_wheeler']),
+               ('02', 'AC1', 'AC 1', 'ac', 7.4::numeric, array['four_wheeler', 'two_wheeler'])) as p(suffix, code, name, kind, kw, vehicles)
+on conflict do nothing;
+
+insert into public.charging_connectors (charging_point_id, connector_number, connector_type, max_power_kw)
+select ('00000000-0000-4000-d000-00000002' || lpad(n::text, 2, '0') || c.suffix)::uuid, 1, c.kind::public.connector_type, c.kw
+  from generate_series(1, 5) n,
+       (values ('01', 'ccs2', 60::numeric), ('02', 'type2_ac', 7.4::numeric)) as c(suffix, kind, kw)
+on conflict do nothing;
+
+update public.station_applications
+   set status = 'approved', revision = 1, submitted_at = now() - interval '2 days',
+       submitted_by = '00000000-0000-4000-a000-000000000011', decided_at = now() - interval '1 day',
+       decided_by = '00000000-0000-4000-a000-000000000001'
+ where station_id::text like '00000000-0000-4000-c000-0000000002%' and status = 'draft';
+
+-- Every demo station is open 24 hours so testing works at any time of day.
+-- Also corrects hosted projects seeded before this, when some stations were
+-- 06:00 to 23:00 (the inserts above skip rows that already exist).
+delete from public.station_operating_hours h
+ using public.stations s
+ where s.id = h.station_id and s.business_id = '00000000-0000-4000-b000-000000000001'
+   and h.charging_point_id is null and (h.opens_minute, h.closes_minute) <> (0, 1440);
+
+insert into public.station_operating_hours (station_id, day_of_week, opens_minute, closes_minute)
+select s.id, d, 0, 1440
+  from public.stations s, generate_series(1, 7) d
+ where s.business_id = '00000000-0000-4000-b000-000000000001'
+on conflict do nothing;

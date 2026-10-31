@@ -7,9 +7,9 @@ import { requireUserId, serviceDb } from '../_shared/db.ts';
 import { requireEnv } from '../_shared/env.ts';
 import { GatewayError, RazorpayClient } from '../_shared/razorpay.ts';
 import { verifyPayment } from '../_shared/payments.ts';
-import { log } from '../_shared/log.ts';
+import { log, withLogging } from '../_shared/log.ts';
 
-Deno.serve(async (req) => {
+Deno.serve(withLogging('payments-verify', async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'method_not_allowed');
@@ -26,4 +26,4 @@ Deno.serve(async (req) => {
     if (!(err instanceof HttpError)) log('error', 'payment.verify_failed', { error: String(err) });
     return errorResponse(err);
   }
-});
+}));

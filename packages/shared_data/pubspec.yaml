@@ -12,6 +12,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_riverpod: ^3.4.3
+  logging: ^1.3.0
   meta: ^1.16.0
   shared_models:
   supabase_flutter: ^2.18.3

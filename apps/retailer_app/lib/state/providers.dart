@@ -63,6 +63,15 @@ final profileProvider = FutureProvider<CustomerProfile?>((ref) async {
 
 final termsProvider = FutureProvider<BookingTerms>((ref) => ref.watch(retailRepositoryProvider).terms());
 
+/// Whether the signed-in customer accepted the current booking terms. False
+/// for a guest.
+final termsAcceptedProvider = FutureProvider<bool>((ref) async {
+  final id = ref.watch(customerIdProvider).value;
+  if (id == null) return false;
+  final terms = await ref.watch(termsProvider.future);
+  return ref.watch(retailRepositoryProvider).hasAcceptedTerms(terms.termsVersion);
+});
+
 final stationProvider = FutureProvider.autoDispose.family<StationDetail, String>((ref, id) {
   // Distance is measured from the search centre (or the start of the trip),
   // read once.

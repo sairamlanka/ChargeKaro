@@ -6,8 +6,9 @@ import { errorResponse, HttpError, json } from '../_shared/http.ts';
 import { serviceDb } from '../_shared/db.ts';
 import { requireEnv } from '../_shared/env.ts';
 import { handleWebhook } from '../_shared/payments.ts';
+import { withLogging } from '../_shared/log.ts';
 
-Deno.serve(async (req) => {
+Deno.serve(withLogging('razorpay-webhook', async (req) => {
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'method_not_allowed');
     const raw = await req.text(); // exact bytes are needed for the signature
@@ -16,4 +17,4 @@ Deno.serve(async (req) => {
   } catch (err) {
     return errorResponse(err);
   }
-});
+}));

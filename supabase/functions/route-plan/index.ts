@@ -10,9 +10,9 @@
 //                          -> driving distance to each (Near Me; at most 25).
 import { corsHeaders, errorResponse, HttpError, json, readJson } from '../_shared/http.ts';
 import { drivingDistances, planRoute, readPoint } from '../_shared/routing.ts';
-import { log } from '../_shared/log.ts';
+import { log, withLogging } from '../_shared/log.ts';
 
-Deno.serve(async (req) => {
+Deno.serve(withLogging('route-plan', async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'method_not_allowed');
@@ -32,4 +32,4 @@ Deno.serve(async (req) => {
     else if (err.status >= 500) log('warn', 'route.unavailable', { code: err.code });
     return errorResponse(err);
   }
-});
+}));

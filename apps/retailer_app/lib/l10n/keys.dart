@@ -335,6 +335,7 @@ enum K {
   mobileNumber,
   mobileRequired,
   mobileVerifiedHelper,
+  completeProfileNotice,
   mockPayBody,
   mockPayClose,
   mockPayFailure,
