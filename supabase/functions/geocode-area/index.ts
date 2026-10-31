@@ -4,13 +4,13 @@
 // PHOTON_URL points at a self-hosted Photon instead of the public server.
 import { corsHeaders, errorResponse, HttpError, json, readJson } from '../_shared/http.ts';
 import { defaultPhotonUrl, geocodeArea, PlaceCache } from '../_shared/geocode.ts';
-import { log } from '../_shared/log.ts';
+import { log, withLogging } from '../_shared/log.ts';
 
 // Kept while this function instance stays warm, so a place many customers
 // type ("gachibowli") is answered without calling Photon again.
 const cache = new PlaceCache();
 
-Deno.serve(async (req) => {
+Deno.serve(withLogging('geocode-area', async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'method_not_allowed');
@@ -26,4 +26,4 @@ Deno.serve(async (req) => {
     if (!(err instanceof HttpError)) log('error', 'geocode.failed', { error: String(err) });
     return errorResponse(err);
   }
-});
+}));

@@ -4,6 +4,8 @@ library;
 
 export 'src/config.dart';
 export 'src/failure.dart';
+export 'src/logging.dart';
+export 'package:logging/logging.dart' show Level, Logger;
 export 'src/providers.dart';
 export 'src/repositories/admin_repository.dart';
 export 'src/repositories/auth_repository.dart';

@@ -20,16 +20,25 @@ class SectionCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(children: [
-                Container(
-                  width: 4,
-                  height: 18,
-                  margin: const EdgeInsets.only(right: 10),
-                  decoration: BoxDecoration(gradient: Brand.gradient, borderRadius: BorderRadius.circular(4)),
-                ),
-                Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
-                ?trailing,
-              ]),
+              LayoutBuilder(builder: (context, box) {
+                final heading = Row(children: [
+                  Container(
+                    width: 4,
+                    height: 18,
+                    margin: const EdgeInsets.only(right: 10),
+                    decoration: BoxDecoration(gradient: Brand.gradient, borderRadius: BorderRadius.circular(4)),
+                  ),
+                  Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
+                  if (box.maxWidth >= 480) ?trailing,
+                ]);
+                // On narrow cards the trailing control goes under the title.
+                if (trailing == null || box.maxWidth >= 480) return heading;
+                return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  heading,
+                  const SizedBox(height: 10),
+                  SingleChildScrollView(scrollDirection: Axis.horizontal, child: trailing),
+                ]);
+              }),
               const SizedBox(height: 14),
               child,
             ],

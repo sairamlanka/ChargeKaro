@@ -82,7 +82,7 @@ class _Body extends StatelessWidget {
               HeroStat(label: 'Active stations', count: n('stations', 'active'), icon: Icons.ev_station_rounded),
               HeroStat(label: 'Charging points', count: n('charging_points', 'total'), icon: Icons.electrical_services_rounded),
               HeroStat(label: 'Bookings in range', count: n('bookings', 'in_range_total'), icon: Icons.event_available_rounded),
-              HeroStat(label: 'Businesses', count: n('businesses', 'total'), icon: Icons.storefront_rounded),
+              HeroStat(label: 'Retail customers', count: n('customers', 'total'), icon: Icons.people_alt_rounded),
             ];
             final cols = c.maxWidth > 700 ? 4 : 2;
             final w = (c.maxWidth - (cols - 1) * 10) / cols;
@@ -109,6 +109,11 @@ class _Body extends StatelessWidget {
           icon: Icons.electrical_services_rounded,
           accent: Brand.ocean,
         ),
+      ]),
+      section('Retail customers', Icons.people_alt_rounded, Brand.ocean, [
+        MetricTile(label: 'Customers', count: n('customers', 'total'), caption: 'all time · excludes staff and business accounts', icon: Icons.people_alt_rounded, accent: Brand.ocean),
+        MetricTile(label: 'New in range', count: n('customers', 'new_in_range'), icon: Icons.person_add_alt_1_rounded, accent: Brand.green),
+        MetricTile(label: 'Booked in range', count: n('customers', 'booked_in_range'), caption: 'customers with at least one booking', icon: Icons.how_to_reg_rounded, accent: violet),
       ]),
       section('Bookings in range', Icons.event_note_rounded, violet, [
         MetricTile(label: 'Bookings', count: n('bookings', 'in_range_total'), icon: Icons.event_rounded, accent: violet),

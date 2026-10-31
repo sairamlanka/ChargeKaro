@@ -57,7 +57,7 @@ GoRouter buildRouter() => GoRouter(
             return AlternativesScreen(query: (exclude: q['exclude'], lat: double.tryParse(q['lat'] ?? ''), lng: double.tryParse(q['lng'] ?? '')));
           },
         ),
-        GoRoute(path: '/book/details', builder: (_, _) => const DetailsScreen()),
+        GoRoute(path: '/book/details', builder: (_, s) => DetailsScreen(only: s.uri.queryParameters['only']?.split(',').toSet())),
         GoRoute(path: '/book/verify', builder: (_, _) => const VerifyScreen()),
         GoRoute(path: '/book/pay/:id', builder: (_, s) => PaymentScreen(bookingId: s.pathParameters['id']!)),
         GoRoute(path: '/book/done/:id', builder: (_, s) => ConfirmationScreen(bookingId: s.pathParameters['id']!)),

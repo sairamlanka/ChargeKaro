@@ -5,8 +5,9 @@ import { serviceDb } from '../_shared/db.ts';
 import { requireEnv } from '../_shared/env.ts';
 import { requireCronSecret } from '../_shared/cron.ts';
 import { dispatchNotifications, FcmSender } from '../_shared/fcm.ts';
+import { withLogging } from '../_shared/log.ts';
 
-Deno.serve(async (req) => {
+Deno.serve(withLogging('dispatch-notifications', async (req) => {
   try {
     requireCronSecret(req);
     const sender = new FcmSender(requireEnv('FCM_SERVICE_ACCOUNT_JSON'));
@@ -14,4 +15,4 @@ Deno.serve(async (req) => {
   } catch (err) {
     return errorResponse(err);
   }
-});
+}, { okLevel: 'debug' }));

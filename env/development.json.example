@@ -1,7 +1,8 @@
 {
-  "SUPABASE_URL": "http://127.0.0.1:54321",
-  "SUPABASE_ANON_KEY": "<local anon key from `supabase status`>",
+  "SUPABASE_URL": "https://<project-ref>.supabase.co",
+  "SUPABASE_ANON_KEY": "<publishable key from Project Settings > API>",
   "APP_ENV": "development",
+  "LOG_LEVEL": "DEBUG",
   "AUTH_REDIRECT_URL": "in.chargekaro.business://auth-callback",
   "MAPS_ENABLED": "false",
   "FCM_ENABLED": "false"

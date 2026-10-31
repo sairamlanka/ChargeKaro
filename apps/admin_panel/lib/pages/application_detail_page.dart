@@ -309,38 +309,54 @@ class _Documents extends ConsumerWidget {
         for (final c in r.checklist)
           Builder(builder: (context) {
             final d = c.documentId == null ? null : docsById[c.documentId];
-            return ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(d == null ? Icons.description_outlined : (d.isImage ? Icons.image_outlined : Icons.picture_as_pdf_outlined)),
-              title: Text('${c.name}${c.isRequired ? '' : ' (optional)'}'),
-              subtitle: Text([
-                c.scope.label,
-                if (d != null) '${d.fileName} · ${Fmt.fileSize(d.sizeBytes)}',
-                if (d?.expiresOn != null) 'expires ${Fmt.dateOnly(d!.expiresOn!)}',
-                if (d?.reviewNote != null) 'note: ${d!.reviewNote}',
-                if (d == null) 'not uploaded',
-              ].join(' · ')),
-              trailing: Wrap(spacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                if (c.documentStatus != null) StatusChip.document(c.documentStatus!),
-                if (d != null)
-                  IconButton(
-                    tooltip: 'Open (link valid 5 minutes)',
-                    icon: const Icon(Icons.open_in_new),
-                    onPressed: () => runAction(context, () async {
-                      final url = await repo.documentUrl(d.storagePath);
-                      await launchUrl(Uri.parse(url), webOnlyWindowName: '_blank');
-                    }),
-                  ),
-                if (d != null && canReview && d.status == DocumentStatus.pendingReview)
-                  PopupMenuButton<DocumentStatus>(
-                    tooltip: 'Review',
-                    onSelected: (v) => review(d, v),
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: DocumentStatus.approved, child: Text('Approve')),
-                      PopupMenuItem(value: DocumentStatus.correctionRequired, child: Text('Ask for correction')),
-                      PopupMenuItem(value: DocumentStatus.rejected, child: Text('Reject')),
-                    ],
-                  ),
+            final t = Theme.of(context);
+            // Status and actions sit under the text rather than beside it, so
+            // the name keeps the full width on narrow screens.
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, right: 16),
+                  child: Icon(d == null ? Icons.description_outlined : (d.isImage ? Icons.image_outlined : Icons.picture_as_pdf_outlined)),
+                ),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${c.name}${c.isRequired ? '' : ' (optional)'}', style: t.textTheme.bodyLarge),
+                    Text(
+                      [
+                        c.scope.label,
+                        if (d != null) '${d.fileName} · ${Fmt.fileSize(d.sizeBytes)}',
+                        if (d?.expiresOn != null) 'expires ${Fmt.dateOnly(d!.expiresOn!)}',
+                        if (d?.reviewNote != null) 'note: ${d!.reviewNote}',
+                        if (d == null) 'not uploaded',
+                      ].join(' · '),
+                      style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(spacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                      if (c.documentStatus != null) StatusChip.document(c.documentStatus!),
+                      if (d != null)
+                        IconButton(
+                          tooltip: 'Open (link valid 5 minutes)',
+                          icon: const Icon(Icons.open_in_new),
+                          onPressed: () => runAction(context, () async {
+                            final url = await repo.documentUrl(d.storagePath);
+                            await launchUrl(Uri.parse(url), webOnlyWindowName: '_blank');
+                          }),
+                        ),
+                      if (d != null && canReview && d.status == DocumentStatus.pendingReview)
+                        PopupMenuButton<DocumentStatus>(
+                          tooltip: 'Review',
+                          onSelected: (v) => review(d, v),
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(value: DocumentStatus.approved, child: Text('Approve')),
+                            PopupMenuItem(value: DocumentStatus.correctionRequired, child: Text('Ask for correction')),
+                            PopupMenuItem(value: DocumentStatus.rejected, child: Text('Reject')),
+                          ],
+                        ),
+                    ]),
+                  ]),
+                ),
               ]),
             );
           }),

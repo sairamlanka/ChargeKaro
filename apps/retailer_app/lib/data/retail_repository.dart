@@ -16,7 +16,10 @@ class RetailRepository extends Repository {
 
   Future<T> _rpc<T>(String fn, [Map<String, dynamic>? params]) => rpc<T>(fn, params).timeout(
         timeout,
-        onTimeout: () => throw const AppFailure(FailureKind.network, 'timeout', 'This is taking too long. Check your connection and try again.'),
+        onTimeout: () {
+          log.severe('rpc $fn timed out after ${timeout.inSeconds} s');
+          throw const AppFailure(FailureKind.network, 'timeout', 'This is taking too long. Check your connection and try again.');
+        },
       );
 
   /// Discovery calls work without an account. If the server rejects the
@@ -30,9 +33,11 @@ class RetailRepository extends Repository {
     } on AppFailure catch (f) {
       if (f.kind != FailureKind.unauthenticated) rethrow;
       if (client.auth.currentSession != null) {
+        log.info('$fn rejected the saved session; signing out locally and retrying as a guest');
         await client.auth.signOut(scope: SignOutScope.local).catchError((_) {});
         return _rpc<T>(fn, params);
       }
+      log.severe('$fn rejected the app key (${f.code}): check SUPABASE_ANON_KEY in the env file');
       throw AppFailure(FailureKind.server, 'api_key_rejected', 'The server did not accept this app.', detail: f.code);
     }
   }
@@ -157,10 +162,10 @@ class RetailRepository extends Repository {
   // Phone verification (creates or links the customer account)
   // -------------------------------------------------------------------------
 
-  Future<void> sendOtp(String phone) => guard(() => client.auth.signInWithOtp(phone: phone, shouldCreateUser: true));
+  Future<void> sendOtp(String phone) => guard(() => client.auth.signInWithOtp(phone: phone, shouldCreateUser: true), log: log, what: 'send OTP');
 
   Future<void> verifyOtp(String phone, String code) =>
-      guard(() => client.auth.verifyOTP(phone: phone, token: code.trim(), type: OtpType.sms));
+      guard(() => client.auth.verifyOTP(phone: phone, token: code.trim(), type: OtpType.sms), log: log, what: 'verify OTP');
 
   /// Local development only: the last code the dev SMS hook received for
   /// this number (supabase/dev/dev_otp.sql). Null when the hook isn't set up,
@@ -207,6 +212,20 @@ class RetailRepository extends Repository {
     if (patch.isEmpty) return Future.value();
     return guard(() async => client.from('profiles').update(patch).eq('id', uid));
   }
+
+  /// Whether this customer already accepted [version] of the booking terms,
+  /// so a signed-in customer is not asked again on every booking.
+  Future<bool> hasAcceptedTerms(String version) => guard(() async {
+        final rows = await client
+            .from('customer_consents')
+            .select('id')
+            .eq('user_id', uid)
+            .eq('kind', 'booking_terms')
+            .eq('version', version)
+            .eq('granted', true)
+            .limit(1);
+        return rows.isNotEmpty;
+      });
 
   Future<void> recordConsents({required String version, required bool terms, required bool marketing}) => guard(() async {
         await client.from('customer_consents').insert([
@@ -282,22 +301,25 @@ class RetailRepository extends Repository {
   // -------------------------------------------------------------------------
 
   /// Calls an Edge Function and maps its `{error, message}` body to AppFailure.
-  Future<Map<String, dynamic>> _invoke(String fn, Map<String, dynamic> body) async {
-    try {
-      final res = await client.functions.invoke(fn, body: body).timeout(timeout);
-      final data = res.data;
-      return data is Map<String, dynamic> ? data : <String, dynamic>{};
-    } on FunctionException catch (e) {
-      final details = e.details;
-      final code = details is Map ? details['error']?.toString() ?? 'function_error' : 'function_error';
-      final message = details is Map ? details['message']?.toString() : null;
-      throw AppFailure(_kindFor(e.status), code, AppFailure.messages[code] ?? message ?? 'The request could not be completed.');
-    } on TimeoutException {
-      throw const AppFailure(FailureKind.network, 'timeout', 'This is taking too long. Check your connection and try again.');
-    } catch (e) {
-      throw AppFailure.from(e);
-    }
-  }
+  Future<Map<String, dynamic>> _invoke(String fn, Map<String, dynamic> body) => logged('function $fn', () async {
+        try {
+          final res = await client.functions.invoke(fn, body: body).timeout(timeout);
+          final data = res.data;
+          return data is Map<String, dynamic> ? data : <String, dynamic>{};
+        } on FunctionException catch (e) {
+          final details = e.details;
+          final code = details is Map ? details['error']?.toString() ?? 'function_error' : 'function_error';
+          final message = details is Map ? details['message']?.toString() : null;
+          throw AppFailure(
+            _kindFor(e.status),
+            code,
+            AppFailure.messages[code] ?? message ?? 'The request could not be completed.',
+            detail: 'HTTP ${e.status}${message == null ? '' : ': $message'}',
+          );
+        } on TimeoutException {
+          throw const AppFailure(FailureKind.network, 'timeout', 'This is taking too long. Check your connection and try again.');
+        }
+      }, params: body);
 
   static FailureKind _kindFor(int status) => switch (status) {
         401 => FailureKind.unauthenticated,

@@ -22,6 +22,8 @@ dev_dependencies:
     sdk: flutter
 
 flutter:
+  assets:
+    - assets/chargekaro_logo.jpg
   fonts:
     # Plus Jakarta Sans (SIL Open Font License 1.1, see fonts/OFL.txt).
     # Latin + Latin Extended subsets, which include the rupee sign.

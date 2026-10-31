@@ -9,6 +9,7 @@ import '../../l10n/l10n.dart';
 import '../../state/booking_flow.dart';
 import '../../state/providers.dart';
 import '../../state/search.dart';
+import '../booking/reserve.dart';
 import '../common/fallback.dart';
 import '../common/format.dart';
 import '../common/map_view.dart';
@@ -666,7 +667,7 @@ class _StartSections extends ConsumerWidget {
           icon: Icons.pending_actions_rounded,
           title: l(K.continueBookingTitle),
           subtitle: '${draft.stationName} · ${f.slot(draft.start, draft.end)}',
-          onTap: () => context.push(draft.bookingId != null ? '/book/pay/${draft.bookingId}' : (draft.hasContact ? '/book/review' : '/book/details')),
+          onTap: () => draft.bookingId != null ? context.push('/book/pay/${draft.bookingId}') : continueBooking(context, ref),
           trailing: TextButton(onPressed: () => ref.read(bookingFlowProvider.notifier).clear(), child: Text(l(K.discard))),
         ),
       if (next != null)

@@ -6,8 +6,9 @@ import { requireEnv } from '../_shared/env.ts';
 import { requireCronSecret } from '../_shared/cron.ts';
 import { RazorpayClient } from '../_shared/razorpay.ts';
 import { processRefunds } from '../_shared/payments.ts';
+import { withLogging } from '../_shared/log.ts';
 
-Deno.serve(async (req) => {
+Deno.serve(withLogging('process-refunds', async (req) => {
   try {
     requireCronSecret(req);
     const gateway = new RazorpayClient(requireEnv('RAZORPAY_KEY_ID'), requireEnv('RAZORPAY_KEY_SECRET'));
@@ -15,4 +16,4 @@ Deno.serve(async (req) => {
   } catch (err) {
     return errorResponse(err);
   }
-});
+}, { okLevel: 'debug' }));

@@ -6,19 +6,25 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  AppLogging.start(AppConfig.fromEnvironment(), app: 'ChargeKaro Admin');
+  // The logo shows for 3 seconds while the app starts up behind it.
+  runApp(const SplashGate(load: _start));
+}
+
+Future<Widget> _start() async {
   final config = AppConfig.fromEnvironment();
   if (!config.isUsable) {
-    runApp(MaterialApp(theme: AppTheme.light(), home: SetupRequiredScreen(appName: 'ChargeKaro Admin', problems: config.problems)));
-    return;
+    Logger('App').severe('Not configured: ${config.problems.join(' ')}');
+    return MaterialApp(theme: AppTheme.light(), home: SetupRequiredScreen(appName: 'ChargeKaro Admin', problems: config.problems));
   }
-  await Supabase.initialize(url: config.supabaseUrl, publishableKey: config.supabaseKey);
-  runApp(ProviderScope(
+  await Supabase.initialize(url: config.supabaseUrl, publishableKey: config.supabaseKey, debug: false);
+  return ProviderScope(
     overrides: [
       appConfigProvider.overrideWithValue(config),
       supabaseClientProvider.overrideWithValue(Supabase.instance.client),
     ],
     child: const AdminApp(),
-  ));
+  );
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_data/shared_data.dart';
 
 /// Every way asking for the device location can end. The UI shows a
 /// specific screen for each, and always offers area search instead.
@@ -39,8 +40,22 @@ abstract class LocationService {
 class DeviceLocationService implements LocationService {
   const DeviceLocationService();
 
+  static final _log = Logger('DeviceLocationService');
+
   @override
   Future<LocationOutcome> current() async {
+    final outcome = await _current();
+    switch (outcome) {
+      case LocationFound(:final latitude, :final longitude, :final accuracyMeters, :final lastKnown):
+        _log.fine('Location ${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)} '
+            '(±${accuracyMeters.round()} m${lastKnown ? ', last known fix' : ''})');
+      case LocationFailed(:final problem):
+        _log.warning('Location unavailable: ${problem.name}');
+    }
+    return outcome;
+  }
+
+  Future<LocationOutcome> _current() async {
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return const LocationFailed(LocationProblem.servicesOff);
       var permission = await Geolocator.checkPermission();
@@ -64,7 +79,8 @@ class DeviceLocationService implements LocationService {
       return const LocationFailed(LocationProblem.servicesOff);
     } on PermissionDeniedException {
       return const LocationFailed(LocationProblem.denied);
-    } catch (_) {
+    } catch (e, stack) {
+      _log.severe('Location lookup failed', e, stack);
       return const LocationFailed(LocationProblem.unavailable);
     }
   }

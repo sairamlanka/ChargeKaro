@@ -17,8 +17,13 @@ import 'reserve.dart';
 /// are optional. No password: the mobile is verified by a one-time code.
 /// When this device already verified the number, Continue reserves the
 /// time and opens the payment page straight away.
+///
+/// A signed-in customer normally skips this screen ([continueBooking]).
+/// They only see it when their profile lacks something: [only] then names
+/// what to ask for ('name', 'terms') and the rest comes from the profile.
 class DetailsScreen extends ConsumerStatefulWidget {
-  const DetailsScreen({super.key});
+  const DetailsScreen({super.key, this.only});
+  final Set<String>? only;
 
   @override
   ConsumerState<DetailsScreen> createState() => _DetailsScreenState();
@@ -66,21 +71,33 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
 
   bool _busy = false;
 
+  /// Signed in and only asking for what the profile lacks.
+  bool get _compact => widget.only != null && ref.read(retailRepositoryProvider).sessionPhone != null;
+  bool get _askName => !_compact || widget.only!.contains('name');
+  bool get _askTerms => !_compact || widget.only!.contains('terms');
+
   Future<void> _continue() async {
     final valid = _form.currentState!.validate();
-    setState(() => _showTermsError = !_terms);
-    if (!valid || !_terms || _busy) return;
+    final askTerms = _askTerms;
+    setState(() => _showTermsError = askTerms && !_terms);
+    if (!valid || (askTerms && !_terms) || _busy) return;
     final phone = normalizeMobile(_phone.text)!;
     final flow = ref.read(bookingFlowProvider.notifier);
-    flow.setContact(fullName: _name.text, phone: phone, email: _email.text, vehicleLabel: _vehicle.text);
-    flow.setConsents(terms: _terms, marketing: _marketing);
+    final draft = ref.read(bookingFlowProvider);
+    final profile = ref.read(profileProvider).value;
+    final compact = _compact;
+    final name = _askName ? _name.text.trim() : (profile?.fullName?.trim() ?? draft?.fullName ?? '');
+    final email = compact ? (profile?.contactEmail ?? '') : _email.text;
+    flow.setContact(fullName: name, phone: phone, email: email, vehicleLabel: compact ? (draft?.vehicleLabel ?? '') : _vehicle.text);
+    // Terms not asked means they are already on record.
+    flow.setConsents(terms: askTerms ? _terms : true, marketing: askTerms ? _marketing : (draft?.marketingOptIn ?? false));
     final repo = ref.read(retailRepositoryProvider);
     // Already verified on this device with the same number: skip the code.
     if (repo.signedIn && repo.sessionPhone == phone) {
       setState(() => _busy = true);
-      await reconcileProfile(context, ref, enteredName: _name.text.trim(), email: _email.text);
+      await reconcileProfile(context, ref, enteredName: name, email: email);
       if (!mounted) return;
-      await reserveDraft(context, ref);
+      await reserveDraft(context, ref, recordConsents: askTerms);
       if (mounted) setState(() => _busy = false);
     } else {
       context.push('/book/verify');
@@ -97,6 +114,9 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
     ref.watch(customerIdProvider);
     final lockedPhone = repo.sessionPhone;
     final terms = ref.watch(termsProvider).value;
+    final compact = _compact;
+    final askName = _askName;
+    final askTerms = _askTerms;
 
     return Scaffold(
       appBar: AppBar(title: Text(l(K.yourDetails))),
@@ -109,21 +129,24 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
               child: PageBody(children: [
                 DraftSummaryCard(draft: draft, onChange: () => context.pop()),
                 const SizedBox(height: 20),
-                TextFormField(
-                  controller: _name,
-                  textCapitalization: TextCapitalization.words,
-                  textInputAction: TextInputAction.next,
-                  autofillHints: const [AutofillHints.name],
-                  maxLength: 80,
-                  decoration: InputDecoration(labelText: l(K.fullName), prefixIcon: const Icon(Icons.person_outline_rounded), counterText: ''),
-                  validator: (v) {
-                    final s = v?.trim() ?? '';
-                    if (s.isEmpty) return l(K.nameRequired);
-                    if (s.length < 2 || !RegExp(r"[A-Za-zఀ-౿]").hasMatch(s)) return l(K.nameInvalid);
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
+                if (compact) FlowNotice(text: l(K.completeProfileNotice), icon: Icons.person_outline_rounded),
+                if (askName) ...[
+                  TextFormField(
+                    controller: _name,
+                    textCapitalization: TextCapitalization.words,
+                    textInputAction: TextInputAction.next,
+                    autofillHints: const [AutofillHints.name],
+                    maxLength: 80,
+                    decoration: InputDecoration(labelText: l(K.fullName), prefixIcon: const Icon(Icons.person_outline_rounded), counterText: ''),
+                    validator: (v) {
+                      final s = v?.trim() ?? '';
+                      if (s.isEmpty) return l(K.nameRequired);
+                      if (!isValidName(s)) return l(K.nameInvalid);
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 MobileField(
                   controller: _phone,
                   enabled: lockedPhone == null,
@@ -131,59 +154,64 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                 ),
                 if (lockedPhone != null)
                   Align(alignment: Alignment.centerLeft, child: TextButton(onPressed: _useAnotherNumber, child: Text(l(K.useAnotherNumber)))),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _email,
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next,
-                  autofillHints: const [AutofillHints.email],
-                  decoration: InputDecoration(
-                    labelText: l(K.emailOptional),
-                    helperText: l(K.emailHelper),
-                    helperMaxLines: 2,
-                    prefixIcon: const Icon(Icons.alternate_email_rounded),
+                // Signed in: email and vehicle come from the profile and the draft.
+                if (!compact) ...[
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _email,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    autofillHints: const [AutofillHints.email],
+                    decoration: InputDecoration(
+                      labelText: l(K.emailOptional),
+                      helperText: l(K.emailHelper),
+                      helperMaxLines: 2,
+                      prefixIcon: const Icon(Icons.alternate_email_rounded),
+                    ),
+                    validator: (v) => (v == null || v.trim().isEmpty) ? null : (Validators.email(v) == null ? null : l(K.emailInvalid)),
                   ),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? null : (Validators.email(v) == null ? null : l(K.emailInvalid)),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _vehicle,
-                  textInputAction: TextInputAction.done,
-                  maxLength: 40,
-                  decoration: InputDecoration(
-                    labelText: l(K.vehicleOptional),
-                    hintText: l(K.vehicleHint),
-                    prefixIcon: const Icon(Icons.electric_car_outlined),
-                    counterText: '',
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _vehicle,
+                    textInputAction: TextInputAction.done,
+                    maxLength: 40,
+                    decoration: InputDecoration(
+                      labelText: l(K.vehicleOptional),
+                      hintText: l(K.vehicleHint),
+                      prefixIcon: const Icon(Icons.electric_car_outlined),
+                      counterText: '',
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                CheckboxListTile(
-                  value: _terms,
-                  contentPadding: EdgeInsets.zero,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  onChanged: (v) => setState(() {
-                    _terms = v ?? false;
-                    if (_terms) _showTermsError = false;
-                  }),
-                  title: Text(l(K.acceptTerms)),
-                  subtitle: _showTermsError
-                      ? Text(l(K.acceptTermsRequired), style: TextStyle(color: t.colorScheme.error))
-                      : Text(l(K.termsVersion, {'v': terms?.termsVersion ?? '…'}), style: t.textTheme.bodySmall),
-                  secondary: IconButton(
-                    tooltip: l(K.readTerms),
-                    onPressed: () => context.push('/help?section=terms'),
-                    icon: const Icon(Icons.open_in_new_rounded),
+                ],
+                if (askTerms) ...[
+                  const SizedBox(height: 16),
+                  CheckboxListTile(
+                    value: _terms,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    onChanged: (v) => setState(() {
+                      _terms = v ?? false;
+                      if (_terms) _showTermsError = false;
+                    }),
+                    title: Text(l(K.acceptTerms)),
+                    subtitle: _showTermsError
+                        ? Text(l(K.acceptTermsRequired), style: TextStyle(color: t.colorScheme.error))
+                        : Text(l(K.termsVersion, {'v': terms?.termsVersion ?? '…'}), style: t.textTheme.bodySmall),
+                    secondary: IconButton(
+                      tooltip: l(K.readTerms),
+                      onPressed: () => context.push('/help?section=terms'),
+                      icon: const Icon(Icons.open_in_new_rounded),
+                    ),
                   ),
-                ),
-                CheckboxListTile(
-                  value: _marketing,
-                  contentPadding: EdgeInsets.zero,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  onChanged: (v) => setState(() => _marketing = v ?? false),
-                  title: Text(l(K.marketingOptIn)),
-                  subtitle: Text(l(K.marketingOptInHint), style: t.textTheme.bodySmall),
-                ),
+                  CheckboxListTile(
+                    value: _marketing,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    onChanged: (v) => setState(() => _marketing = v ?? false),
+                    title: Text(l(K.marketingOptIn)),
+                    subtitle: Text(l(K.marketingOptInHint), style: t.textTheme.bodySmall),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 FlowNotice(text: l(K.privacyShort), icon: Icons.lock_outline_rounded),
               ]),

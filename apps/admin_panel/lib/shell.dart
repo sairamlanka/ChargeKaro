@@ -45,12 +45,53 @@ class AdminShell extends ConsumerWidget {
         if (!a.isStaff) return const _NoAccess();
         final items = _destinations.where((d) => d.permission == null || a.can(d.permission!)).toList();
         final current = items.lastIndexWhere((d) => d.path == '/' ? location == '/' : location.startsWith(d.path));
-        final wide = MediaQuery.sizeOf(context).width >= 1000;
+        final width = MediaQuery.sizeOf(context).width;
+        final wide = width >= 1000;
         final unread = ref.watch(unreadNotificationsProvider).value ?? 0;
 
         Widget icon(_Destination d) => d.path == '/notifications' && unread > 0
             ? Badge(label: Text('$unread'), child: Icon(d.icon))
             : Icon(d.icon);
+
+        // Phones: a rail would leave too little room for content, so use a drawer.
+        if (width < 600) {
+          return Scaffold(
+            appBar: AppBar(
+              title: Text(current < 0 ? 'ChargeKaro Admin' : items[current].label),
+              actions: [
+                IconButton(
+                  tooltip: 'Sign out',
+                  icon: const Icon(Icons.logout),
+                  onPressed: () => ref.read(authRepositoryProvider).signOut(),
+                ),
+              ],
+            ),
+            drawer: NavigationDrawer(
+              selectedIndex: current < 0 ? null : current,
+              onDestinationSelected: (i) {
+                Navigator.of(context).pop();
+                context.go(items[i].path);
+              },
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 16, 16, 8),
+                  child: Row(children: [
+                    const ChargeLogo(size: 30, animate: false),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('ChargeKaro', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                        Text(a.role?.label ?? '', style: Theme.of(context).textTheme.labelMedium),
+                      ]),
+                    ),
+                  ]),
+                ),
+                for (final d in items) NavigationDrawerDestination(icon: icon(d), label: Text(d.label)),
+              ],
+            ),
+            body: SafeArea(child: child),
+          );
+        }
 
         final rail = NavigationRail(
           extended: wide,
@@ -123,11 +164,12 @@ class PageFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final gutter = MediaQuery.sizeOf(context).width < 600 ? 16.0 : 24.0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+          padding: EdgeInsets.fromLTRB(gutter, gutter, gutter, 16),
           child: Wrap(
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
@@ -141,8 +183,8 @@ class PageFrame extends StatelessWidget {
         ),
         Expanded(
           child: scroll
-              ? SingleChildScrollView(padding: const EdgeInsets.fromLTRB(24, 0, 24, 24), child: Entrance(index: 1, child: child))
-              : Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 0), child: Entrance(index: 1, child: child)),
+              ? SingleChildScrollView(padding: EdgeInsets.fromLTRB(gutter, 0, gutter, gutter), child: Entrance(index: 1, child: child))
+              : Padding(padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 0), child: Entrance(index: 1, child: child)),
         ),
       ],
     );
