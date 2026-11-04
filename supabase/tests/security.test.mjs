@@ -93,7 +93,8 @@ describe('cross-business isolation', () => {
     assert.equal(await count(customer.id, 'bookings', 'id = $1', [bookingA.id]), 1);
     await rejectsWith(as(customer.id, (q) => q(`select qr_token from public.bookings`)), { sqlstate: '42501' });
     const qr = await rpc(customer.id, 'get_my_booking_qr', [bookingA.id]);
-    assert.equal(qr.qr_payload, `CKB1:${bookingA.qr_token}`);
+    assert.match(qr.qr_payload, /^CKB2:[A-Za-z0-9_-]{43}$/, 'a fresh hashed token, not the legacy column');
+    await rejectsWith(as(customer.id, (q) => q(`select token_hash from public.booking_qr_tokens`)), { sqlstate: '42501' });
     await rejectsWith(rpc(other.id, 'get_my_booking_qr', [bookingA.id]), { status: 404 });
     await rejectsWith(rpc(a.owner.id, 'get_my_booking_qr', [bookingA.id]), { status: 404 });
   });

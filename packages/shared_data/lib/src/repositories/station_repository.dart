@@ -29,6 +29,7 @@ class StationRepository extends Repository {
     String? addressLine1,
     String? addressLine2,
     String? city,
+    String? district,
     String? state,
     String? postalCode,
   }) =>
@@ -46,6 +47,7 @@ class StationRepository extends Repository {
         'p_registered_city': city,
         'p_registered_state': state,
         'p_registered_postal_code': postalCode,
+        'p_registered_district': district,
       });
 
   Future<Business> business(String id) => row(client.from('businesses').select().eq('id', id).single(), Business.fromJson);

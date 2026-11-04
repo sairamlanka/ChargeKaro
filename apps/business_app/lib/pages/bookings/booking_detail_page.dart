@@ -4,7 +4,10 @@ import 'package:shared_data/shared_data.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../checkin/checkin_state.dart';
 import '../../state.dart';
+import '../checkin/checkin_widgets.dart';
+import '../checkin/manual_checkin_page.dart';
 
 typedef _Detail = ({Booking booking, List<BookingEvent> events, BookingPolicy policy});
 
@@ -15,8 +18,9 @@ final _detailProvider = FutureProvider.autoDispose.family<_Detail, String>((ref,
   return (booking: b, events: results[0] as List<BookingEvent>, policy: results[1] as BookingPolicy);
 });
 
-/// Booking actions for staff. Every transition is validated by the database
-/// (state machine, check-in window, grace period).
+/// Booking actions for staff. Every transition is validated and audited by
+/// the database (state machine, arrival window, idempotency). Customer
+/// details are shown only after check-in.
 class BookingDetailPage extends ConsumerWidget {
   const BookingDetailPage({super.key, required this.id});
   final String id;
@@ -41,13 +45,31 @@ class BookingDetailPage extends ConsumerWidget {
             if (await runAction(context, f, success: done)) refresh();
           }
 
+          // A fresh idempotency key per tap; the server never starts or
+          // completes the same booking twice anyway.
+          Future<void> charging({required bool start}) async {
+            final device = await ref.read(deviceIdProvider.future);
+            final key = randomId();
+            final r = start
+                ? await repo.startCharging(b.id, idempotencyKey: key, deviceId: device)
+                : await repo.completeCharging(b.id, idempotencyKey: key, deviceId: device);
+            if (r.rejected) throw AppFailure(FailureKind.conflict, r.code ?? 'rejected', r.displayMessage);
+          }
+
           return ListView(padding: const EdgeInsets.all(16), children: [
-            Wrap(spacing: 8, children: [StatusChip.booking(b.status), StatusChip.payment(b.paymentStatus)]),
+            Wrap(spacing: 8, runSpacing: 6, children: [
+              StatusChip.booking(b.status),
+              StatusChip.payment(b.paymentStatus),
+              VerificationChip(b.verificationStatus),
+            ]),
             const SizedBox(height: 12),
             KeyValue('Slot', Fmt.slot(b.startAt, b.endAt)),
             KeyValue('Charging point', b.chargingPointCode),
-            KeyValue('Customer', b.customerDisplayName),
-            KeyValue('Vehicle', b.vehicleLabel),
+            if (b.compatibility != null) KeyValue('Charger', b.compatibility!.summary),
+            if (b.checkinMethod != null) KeyValue('Checked in', '${b.checkinMethod!.label}${b.checkedInAt == null ? '' : ' at ${Fmt.time(b.checkedInAt!)}'}'),
+            const SizedBox(height: 8),
+            CustomerDetailsCard(booking: b),
+            const SizedBox(height: 8),
             KeyValue('Booking fee', '${b.bookingFee.format()} (paid to ChargeKaro)'),
             const KeyValue('Charging fee', 'Collected by your station directly'),
             if (b.cancellationReason != null) KeyValue('Cancelled', '${b.cancellationActor?.label ?? ''}: ${b.cancellationReason}'),
@@ -57,21 +79,23 @@ class BookingDetailPage extends ConsumerWidget {
                 FilledButton.icon(
                   icon: const Icon(Icons.how_to_reg),
                   label: const Text('Check in'),
-                  onPressed: b.checkInWindowContains(now, earlyMinutes: d.policy.earlyCheckinMinutes, graceMinutes: d.policy.arrivalGraceMinutes)
-                      ? () => act(() => repo.checkIn(b.stationId, b.reference, viaQr: false), 'Checked in.')
-                      : null,
+                  onPressed: () async {
+                    await Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => ManualConfirmLoader(bookingId: b.id, stationId: b.stationId)));
+                    refresh();
+                  },
                 ),
               if (canCheckIn && b.status == BookingStatus.arrived)
                 FilledButton.icon(
                   icon: const Icon(Icons.bolt),
                   label: const Text('Charging started'),
-                  onPressed: () => act(() => repo.updateProgress(b.id, BookingStatus.inProgress), 'Marked as charging.'),
+                  onPressed: () => act(() => charging(start: true), 'Charging started.'),
                 ),
-              if (canCheckIn && (b.status == BookingStatus.arrived || b.status == BookingStatus.inProgress))
+              if (canCheckIn && b.status == BookingStatus.inProgress)
                 OutlinedButton.icon(
                   icon: const Icon(Icons.check),
                   label: const Text('Complete'),
-                  onPressed: () => act(() => repo.updateProgress(b.id, BookingStatus.completed), 'Booking completed.'),
+                  onPressed: () => act(() => charging(start: false), 'Charging completed.'),
                 ),
               if (canManage && b.status == BookingStatus.confirmed)
                 OutlinedButton(
@@ -82,7 +106,7 @@ class BookingDetailPage extends ConsumerWidget {
                                   message: 'The customer did not arrive within the grace period. The booking fee is not refunded.',
                                   confirmLabel: 'Mark no-show') &&
                               context.mounted) {
-                            await act(() => repo.updateProgress(b.id, BookingStatus.noShow), 'Marked as no-show.');
+                            await act(() => repo.markNoShow(b.id), 'Marked as no-show.');
                           }
                         }
                       : null,
@@ -107,7 +131,7 @@ class BookingDetailPage extends ConsumerWidget {
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(now.isBefore(b.startAt)
                     ? 'Check-in opens ${d.policy.earlyCheckinMinutes} min before the slot.'
-                    : 'The arrival grace period has passed.'),
+                    : 'The arrival window has closed. A manager can still approve a late arrival.'),
               ),
             const SizedBox(height: 24),
             Text('History', style: Theme.of(context).textTheme.titleMedium),

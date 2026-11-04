@@ -28,6 +28,78 @@ class LocalStore {
   static const _locale = 'locale_v1';
   static const _otp = 'otp_attempts_v1';
   static const _places = 'recent_places_v1';
+  static const _qrs = 'booking_qrs_v2';
+  static const _favourites = 'favourite_stations_v1';
+  static const _vehicle = 'vehicle_profile_v1';
+  static const _reminders = 'booking_reminders_v1';
+
+  bool remindersEnabled() => _prefs.getString(_reminders) != 'off';
+  Future<void> setRemindersEnabled(bool on) => _prefs.setString(_reminders, on ? 'on' : 'off');
+
+  VehicleProfile? vehicle() {
+    final raw = _prefs.getString(_vehicle);
+    if (raw == null) return null;
+    try {
+      return VehicleProfile.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> setVehicle(VehicleProfile? v) => v == null ? _prefs.remove(_vehicle) : _prefs.setString(_vehicle, jsonEncode(v.toJson()));
+  static const _theme = 'theme_mode_v1';
+  static const _textScale = 'text_scale_v1';
+
+  /// Stations the customer starred, newest first, for one-tap rebooking.
+  List<RecentStation> favouriteStations() {
+    final raw = _prefs.getString(_favourites);
+    if (raw == null) return const [];
+    try {
+      return (jsonDecode(raw) as List).map((e) => RecentStation.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> setFavouriteStations(List<RecentStation> list) =>
+      _prefs.setString(_favourites, jsonEncode(list.take(30).map((r) => r.toJson()).toList()));
+
+  /// 'system', 'light' or 'dark'.
+  String themeMode() => _prefs.getString(_theme) ?? 'system';
+  Future<void> setThemeMode(String mode) => _prefs.setString(_theme, mode);
+
+  /// Text size multiplier on top of the phone's own setting (1.0, 1.15, 1.3).
+  double textScale() => double.tryParse(_prefs.getString(_textScale) ?? '') ?? 1.0;
+  Future<void> setTextScale(double v) => _prefs.setString(_textScale, '$v');
+
+  /// The last QR issued to this device for each booking, so opening the
+  /// booking again shows the same code instead of revoking it. Cleared on
+  /// sign-out.
+  BookingQr? bookingQr(String bookingId) {
+    final raw = _prefs.getString(_qrs);
+    if (raw == null) return null;
+    try {
+      final entry = (jsonDecode(raw) as Map<String, dynamic>)[bookingId];
+      return entry == null ? null : BookingQr.fromJson(bookingId, entry);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveBookingQr(BookingQr qr) async {
+    final now = DateTime.now();
+    Map<String, dynamic> all;
+    try {
+      all = jsonDecode(_prefs.getString(_qrs) ?? '{}') as Map<String, dynamic>;
+    } catch (_) {
+      all = {};
+    }
+    all.removeWhere((id, v) => BookingQr.fromJson(id, v).expiredAt(now));
+    all[qr.bookingId] = qr.toJson();
+    await _prefs.setString(_qrs, jsonEncode(all));
+  }
+
+  Future<void> clearBookingQrs() => _prefs.remove(_qrs);
 
   List<RecentStation> recentStations() {
     final raw = _prefs.getString(_recent);

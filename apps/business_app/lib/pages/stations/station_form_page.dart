@@ -34,6 +34,7 @@ class _StationFormPageState extends ConsumerState<StationFormPage> {
   Set<Amenity> _amenities = {};
   Set<StationPaymentMethod> _payments = {};
   Station? _original;
+  AddressPlace _place = const AddressPlace();
   bool _loaded = false;
   bool _busy = false;
 
@@ -57,6 +58,7 @@ class _StationFormPageState extends ConsumerState<StationFormPage> {
           _c['district']!.text = s.district;
           _c['state']!.text = s.state;
           _c['postal_code']!.text = s.postalCode;
+          _place = AddressPlace(state: s.state, district: s.district, city: s.city);
           _c['contact_phone']!.text = s.contactPhone;
           _c['emergency_contact_name']!.text = s.emergencyContactName ?? '';
           _c['emergency_contact_phone']!.text = s.emergencyContactPhone ?? '';
@@ -129,6 +131,9 @@ class _StationFormPageState extends ConsumerState<StationFormPage> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(coordError)));
       return;
     }
+    final messenger = ScaffoldMessenger.of(context);
+    final locations = ref.read(locationRepositoryProvider);
+    final stationName = _c['name']!.text.trim();
     setState(() => _busy = true);
     final repo = ref.read(stationRepositoryProvider);
     final fields = _fields();
@@ -161,9 +166,27 @@ class _StationFormPageState extends ConsumerState<StationFormPage> {
       ref.invalidate(stationsProvider);
       if (mounted) context.pop();
     });
+    if (ok) await _requestNewPlace(messenger, locations, stationName);
     if (!mounted) return;
     setState(() => _busy = false);
     if (ok && message != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message!)));
+  }
+
+  /// A state, district or city typed under "Other" goes to ChargeKaro for
+  /// review; once approved it appears in the dropdowns for everyone.
+  Future<void> _requestNewPlace(ScaffoldMessengerState messenger, LocationRepository locations, String stationName) async {
+    if (!_place.hasNew) return;
+    try {
+      final pending = await locations.requestNew(_place, context: 'Station: $stationName');
+      if (pending) {
+        messenger.showSnackBar(SnackBar(
+          content: Text('We asked ChargeKaro to add "${_place.newValue}" to the list.'),
+        ));
+      }
+    } catch (_) {
+      // The station is saved with the typed value either way; the request is
+      // only for the shared list.
+    }
   }
 
   Widget _f(String key, String label,
@@ -205,9 +228,16 @@ class _StationFormPageState extends ConsumerState<StationFormPage> {
                   _f('address_line1', 'Address line 1', validator: Validators.length(min: 3, max: 200, field: 'Address')),
                   _f('address_line2', 'Address line 2 (optional)'),
                   _f('landmark', 'Landmark (optional)'),
-                  _f('city', 'City', validator: Validators.required(), caps: TextCapitalization.words),
-                  _f('district', 'District', validator: Validators.required(), caps: TextCapitalization.words),
-                  _f('state', 'State', validator: Validators.required(), caps: TextCapitalization.words),
+                  LocationFields(
+                    initial: _place,
+                    helperText: (_original?.isApproved ?? false) ? 'Changes are reviewed by ChargeKaro' : null,
+                    onChanged: (p) {
+                      _place = p;
+                      _c['state']!.text = p.state;
+                      _c['district']!.text = p.district;
+                      _c['city']!.text = p.city;
+                    },
+                  ),
                   _f('postal_code', 'PIN code', validator: Validators.pinCode, keyboard: TextInputType.number),
                   _section('Location'),
                   LocationPicker(latitude: _lat, longitude: _lng, onChanged: (a, b) => setState(() {

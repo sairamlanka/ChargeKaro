@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_data/shared_data.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthChangeEvent, AuthState;
 
 import 'pages/application_detail_page.dart';
 import 'pages/applications_page.dart';
@@ -12,19 +13,27 @@ import 'pages/audit_page.dart';
 import 'pages/bookings_page.dart';
 import 'pages/dashboard_page.dart';
 import 'pages/finance_page.dart';
+import 'pages/locations_page.dart';
 import 'pages/login_page.dart';
 import 'pages/notifications_page.dart';
+import 'pages/set_password_page.dart';
 import 'pages/settings_page.dart';
 import 'pages/staff_page.dart';
 import 'pages/stations_page.dart';
 import 'shell.dart';
 
-/// Re-runs router redirects when the auth session changes.
+/// Re-runs router redirects when the auth session changes, and remembers
+/// when the session came from a password reset link.
 class _AuthListenable extends ChangeNotifier {
-  _AuthListenable(Stream<Object?> stream) {
-    _sub = stream.listen((_) => notifyListeners());
+  _AuthListenable(Stream<AuthState> stream) {
+    _sub = stream.listen((s) {
+      if (s.event == AuthChangeEvent.passwordRecovery) recovering = true;
+      if (s.event == AuthChangeEvent.signedOut) recovering = false;
+      notifyListeners();
+    });
   }
-  late final StreamSubscription<Object?> _sub;
+  late final StreamSubscription<AuthState> _sub;
+  bool recovering = false;
 
   @override
   void dispose() {
@@ -42,13 +51,21 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: listenable,
     redirect: (context, state) {
       final signedIn = auth.currentUser != null;
-      final atLogin = state.matchedLocation == '/login';
+      final loc = state.matchedLocation;
+      final atLogin = loc == '/login';
       if (!signedIn) return atLogin ? null : '/login';
+      // A reset link or a temporary password must be replaced before anything else.
+      final mustSet = listenable.recovering || auth.currentUser?.userMetadata?['must_change_password'] == true;
+      if (mustSet) return loc == '/set-password' ? null : '/set-password';
       if (atLogin) return '/';
       return null;
     },
     routes: [
       GoRoute(path: '/login', builder: (_, _) => const LoginPage()),
+      GoRoute(
+        path: '/set-password',
+        builder: (_, _) => SetPasswordPage(fromResetLink: listenable.recovering, onDone: () => listenable.recovering = false),
+      ),
       ShellRoute(
         builder: (context, state, child) => AdminShell(location: state.matchedLocation, child: child),
         routes: [
@@ -58,6 +75,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/stations', builder: (_, _) => const StationsPage()),
           GoRoute(path: '/bookings', builder: (_, _) => const BookingsPage()),
           GoRoute(path: '/finance', builder: (_, _) => const FinancePage()),
+          GoRoute(path: '/locations', builder: (_, _) => const LocationsPage()),
           GoRoute(path: '/staff', builder: (_, _) => const StaffPage()),
           GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
           GoRoute(path: '/audit', builder: (_, _) => const AuditPage()),

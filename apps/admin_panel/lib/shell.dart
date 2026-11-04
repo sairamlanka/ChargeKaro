@@ -21,6 +21,7 @@ const _destinations = [
   _Destination('/stations', 'Stations', Icons.ev_station_rounded, PlatformPermission.businessesRead),
   _Destination('/bookings', 'Bookings', Icons.event_note_rounded, PlatformPermission.bookingsReadAll),
   _Destination('/finance', 'Finance', Icons.account_balance_rounded, PlatformPermission.financeRead),
+  _Destination('/locations', 'Locations', Icons.location_city_rounded, PlatformPermission.locationsManage),
   _Destination('/staff', 'Admins', Icons.admin_panel_settings_rounded, PlatformPermission.adminsManage),
   _Destination('/settings', 'Settings', Icons.tune_rounded, PlatformPermission.settingsManage),
   _Destination('/audit', 'Audit log', Icons.history_rounded, PlatformPermission.auditRead),
@@ -59,6 +60,11 @@ class AdminShell extends ConsumerWidget {
             appBar: AppBar(
               title: Text(current < 0 ? 'ChargeKaro Admin' : items[current].label),
               actions: [
+                IconButton(
+                  tooltip: 'Change password',
+                  icon: const Icon(Icons.password_rounded),
+                  onPressed: () => context.go('/set-password'),
+                ),
                 IconButton(
                   tooltip: 'Sign out',
                   icon: const Icon(Icons.logout),
@@ -114,6 +120,11 @@ class AdminShell extends ConsumerWidget {
                 padding: const EdgeInsets.only(bottom: 16),
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
                   if (wide) Text(a.role?.label ?? '', style: Theme.of(context).textTheme.labelMedium),
+                  IconButton(
+                    tooltip: 'Change password',
+                    icon: const Icon(Icons.password_rounded),
+                    onPressed: () => context.go('/set-password'),
+                  ),
                   IconButton(
                     tooltip: 'Sign out',
                     icon: const Icon(Icons.logout),

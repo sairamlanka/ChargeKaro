@@ -196,6 +196,18 @@ String localizedFailureMessage(L l, AppFailure f) {
     'phone_provider_disabled' || 'sms_provider_disabled' || 'signup_disabled' => K.otpUnavailable,
     'deletion_blocked' => K.deleteBlockedActive,
     'deletion_blocked_role' => K.deleteBlockedRole,
+    'reschedule_limit_reached' => K.errRescheduleLimit,
+    'reschedule_too_late' => K.errRescheduleTooLate,
+    'not_reschedulable' => K.errNotReschedulable,
+    'same_time' => K.errSameTime,
+    'review_not_allowed' => K.errReviewNotAllowed,
+    'waitlist_limit' => K.errWaitlistLimit,
+    'invalid_waitlist_window' => K.errWaitlistWindow,
+    'invalid_phone' => K.errInvalidPhone,
+    'driver_locked' => K.errDriverLocked,
+    'phone_in_use' => K.errPhoneInUse,
+    'firebase_token_invalid' || 'firebase_token_stale' || 'firebase_token_missing' || 'firebase_token_not_phone' => K.otpWrongOrExpired,
+    'sign_in_unavailable' => K.otpSignInUnavailable,
     _ => null,
   };
   return key == null ? f.message : l(key);

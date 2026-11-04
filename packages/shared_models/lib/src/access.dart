@@ -50,6 +50,7 @@ abstract final class PlatformPermission {
   static const financeExpensesApprove = 'finance.expenses.approve';
   static const financeRefundsIssue = 'finance.refunds.issue';
   static const notificationsBroadcast = 'notifications.broadcast';
+  static const locationsManage = 'locations.manage';
 }
 
 /// One business the signed-in user belongs to (my_business_access()).

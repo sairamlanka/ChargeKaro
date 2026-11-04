@@ -446,3 +446,26 @@ verify_jwt = false
 
 [functions.dispatch-customer-messages]
 verify_jwt = false
+
+# Booking check-in (staff JWT required; logic lives in the check-in RPCs).
+[functions.verify-booking-qr]
+verify_jwt = true
+
+[functions.checkin-booking]
+verify_jwt = true
+
+[functions.sync-offline-checkins]
+verify_jwt = true
+
+[functions.start-charging]
+verify_jwt = true
+
+[functions.complete-charging]
+verify_jwt = true
+
+[functions.team-members]
+verify_jwt = true
+
+# Customer App phone sign-in through Firebase: callers are not signed in yet.
+[functions.firebase-phone-auth]
+verify_jwt = false

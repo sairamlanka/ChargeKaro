@@ -7,6 +7,9 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:shared_validation/shared_validation.dart';
 
 import '../../state.dart';
+import 'team_page.dart';
+
+export 'team_page.dart' show TeamPage;
 
 class MorePage extends ConsumerWidget {
   const MorePage({super.key});
@@ -16,6 +19,7 @@ class MorePage extends ConsumerWidget {
     final access = ref.watch(currentAccessProvider);
     final all = ref.watch(businessAccessProvider).value ?? const [];
     final unread = ref.watch(unreadNotificationsProvider).value ?? 0;
+    final teamBadge = ref.watch(pendingTeamRequestsProvider);
     Widget item(IconData icon, Color color, String title, VoidCallback onTap, {Widget? badge}) => ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
           leading: Container(
@@ -55,7 +59,9 @@ class MorePage extends ConsumerWidget {
                   badge: unread > 0 ? Badge(label: Text('$unread')) : null),
               if (access?.can(BusinessPermission.reportsView) ?? false)
                 item(Icons.insights_rounded, Brand.amber, 'Reports', () => context.go('/more/reports')),
-              if (access?.isOwner ?? false) item(Icons.groups_rounded, const Color(0xFF7C3AED), 'Team', () => context.go('/more/team')),
+              if (access != null && access.role != BusinessMemberRole.stationStaff)
+                item(Icons.groups_rounded, const Color(0xFF7C3AED), 'Team', () => context.go('/more/team'),
+                    badge: teamBadge > 0 ? Badge(label: Text('$teamBadge')) : null),
               item(Icons.person_rounded, Brand.green, 'Account', () => context.go('/more/account')),
             ]),
           ),
@@ -75,177 +81,6 @@ class MorePage extends ConsumerWidget {
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
-          ),
-        ]),
-      ),
-    );
-  }
-}
-
-final _membersProvider = FutureProvider.autoDispose<List<BusinessMember>>((ref) {
-  final a = ref.watch(currentAccessProvider);
-  if (a == null) return const <BusinessMember>[];
-  return ref.watch(stationRepositoryProvider).members(a.businessId);
-});
-
-class TeamPage extends ConsumerWidget {
-  const TeamPage({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final stations = ref.watch(stationsProvider).value ?? const [];
-    return Scaffold(
-      appBar: AppBar(title: const Text('Team')),
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.person_add_alt),
-        label: const Text('Add member'),
-        onPressed: () async {
-          if (await showModalBottomSheet<bool>(context: context, isScrollControlled: true, builder: (_) => _MemberSheet(stations: stations)) == true) {
-            ref.invalidate(_membersProvider);
-          }
-        },
-      ),
-      body: AsyncView(
-        value: ref.watch(_membersProvider),
-        onRetry: () => ref.invalidate(_membersProvider),
-        builder: (list) => ListView(padding: const EdgeInsets.only(bottom: 96), children: [
-          for (final m in list)
-            ListTile(
-              title: Text(m.fullName ?? m.email ?? 'Member'),
-              subtitle: Text([
-                m.email ?? '',
-                m.role.label,
-                if (m.role != BusinessMemberRole.owner)
-                  m.stationIds.isEmpty ? 'no stations' : stations.where((s) => m.stationIds.contains(s.id)).map((s) => s.name).join(', '),
-              ].where((s) => s.isNotEmpty).join(' · ')),
-              trailing: m.role == BusinessMemberRole.owner
-                  ? null
-                  : Row(mainAxisSize: MainAxisSize.min, children: [
-                      if (!m.active) const StatusChip('Removed'),
-                      if (m.active)
-                        IconButton(
-                          tooltip: 'Edit',
-                          icon: const Icon(Icons.edit_outlined),
-                          onPressed: () async {
-                            if (await showModalBottomSheet<bool>(
-                                    context: context, isScrollControlled: true, builder: (_) => _MemberSheet(stations: stations, member: m)) ==
-                                true) {
-                              ref.invalidate(_membersProvider);
-                            }
-                          },
-                        ),
-                      if (m.active)
-                        IconButton(
-                          tooltip: 'Remove',
-                          icon: const Icon(Icons.person_remove_outlined),
-                          onPressed: () async {
-                            final ok = await confirm(context,
-                                title: 'Remove ${m.fullName ?? m.email}?', message: 'They lose access immediately.', confirmLabel: 'Remove', destructive: true);
-                            if (ok && context.mounted && await runAction(context, () => ref.read(stationRepositoryProvider).revokeMember(m.id))) {
-                              ref.invalidate(_membersProvider);
-                            }
-                          },
-                        ),
-                    ]),
-            ),
-        ]),
-      ),
-    );
-  }
-}
-
-class _MemberSheet extends ConsumerStatefulWidget {
-  const _MemberSheet({required this.stations, this.member});
-  final List<Station> stations;
-  final BusinessMember? member;
-
-  @override
-  ConsumerState<_MemberSheet> createState() => _MemberSheetState();
-}
-
-class _MemberSheetState extends ConsumerState<_MemberSheet> {
-  final _email = TextEditingController();
-  late BusinessMemberRole _role = widget.member?.role ?? BusinessMemberRole.stationStaff;
-  late Set<String> _stations = {...?widget.member?.stationIds};
-  late Set<BusinessPermission> _perms = widget.member?.permissions ?? _defaults(_role);
-
-  static Set<BusinessPermission> _defaults(BusinessMemberRole r) => r == BusinessMemberRole.stationManager
-      ? {
-          BusinessPermission.stationEdit, BusinessPermission.availabilityEdit, BusinessPermission.pointsManage, BusinessPermission.pointsStatus,
-          BusinessPermission.bookingsView, BusinessPermission.bookingsCheckin, BusinessPermission.bookingsManage,
-          BusinessPermission.maintenanceReport, BusinessPermission.maintenanceManage, BusinessPermission.reportsView,
-        }
-      : {BusinessPermission.bookingsView, BusinessPermission.bookingsCheckin, BusinessPermission.pointsStatus, BusinessPermission.maintenanceReport};
-
-  @override
-  void dispose() {
-    _email.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final editing = widget.member != null;
-    final valid = (editing || Validators.email(_email.text) == null) && _stations.isNotEmpty;
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.9,
-      builder: (context, scroll) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-        child: ListView(controller: scroll, padding: const EdgeInsets.all(16), children: [
-          Text(editing ? 'Edit member' : 'Add a team member', style: Theme.of(context).textTheme.titleLarge),
-          if (!editing) ...[
-            const Text('They must first create a ChargeKaro Business account with this email.'),
-            const SizedBox(height: 8),
-            TextField(controller: _email, decoration: const InputDecoration(labelText: 'Email'), keyboardType: TextInputType.emailAddress, onChanged: (_) => setState(() {})),
-          ],
-          const SizedBox(height: 12),
-          SegmentedButton<BusinessMemberRole>(
-            segments: const [
-              ButtonSegment(value: BusinessMemberRole.stationManager, label: Text('Manager')),
-              ButtonSegment(value: BusinessMemberRole.stationStaff, label: Text('Staff')),
-            ],
-            selected: {_role},
-            onSelectionChanged: (s) => setState(() {
-              _role = s.first;
-              _perms = _defaults(_role);
-            }),
-          ),
-          const SizedBox(height: 12),
-          Text('Stations', style: Theme.of(context).textTheme.titleSmall),
-          for (final s in widget.stations)
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              value: _stations.contains(s.id),
-              title: Text(s.name),
-              onChanged: (v) => setState(() => v == true ? _stations = {..._stations, s.id} : _stations = {..._stations}..remove(s.id)),
-            ),
-          Text('Permissions', style: Theme.of(context).textTheme.titleSmall),
-          for (final p in BusinessPermission.values)
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              value: _perms.contains(p),
-              title: Text(p.label),
-              onChanged: (v) => setState(() => v == true ? _perms = {..._perms, p} : _perms = {..._perms}..remove(p)),
-            ),
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: !valid
-                ? null
-                : () async {
-                    final repo = ref.read(stationRepositoryProvider);
-                    final businessId = ref.read(currentAccessProvider)!.businessId;
-                    final ok = await runAction(context, () async {
-                      if (editing) {
-                        await repo.updateMember(widget.member!.id, _role, permissions: _perms, stationIds: _stations.toList());
-                      } else {
-                        await repo.addMember(businessId, _email.text, _role, permissions: _perms, stationIds: _stations.toList());
-                      }
-                    }, success: editing ? 'Member updated.' : 'Member added.');
-                    if (ok && context.mounted) Navigator.pop(context, true);
-                  },
-            child: Text(editing ? 'Save' : 'Add member'),
           ),
         ]),
       ),

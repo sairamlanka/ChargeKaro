@@ -46,7 +46,19 @@ class _FilterSheetState extends State<_FilterSheet> {
     ConnectorType.type6Lev,
     ConnectorType.threePinSocket,
   ];
-  static const _amenities = [Amenity.restroom, Amenity.cafe, Amenity.coveredParking, Amenity.wheelchairAccessible, Amenity.wifi, Amenity.cctv];
+  // Highway essentials first: toilets, food, a place to wait, open all night.
+  static const _amenities = [
+    Amenity.restroom,
+    Amenity.restaurant,
+    Amenity.cafe,
+    Amenity.waitingLounge,
+    Amenity.open24x7,
+    Amenity.drinkingWater,
+    Amenity.coveredParking,
+    Amenity.wheelchairAccessible,
+    Amenity.wifi,
+    Amenity.cctv,
+  ];
   static const _vehicles = [VehicleCategory.twoWheeler, VehicleCategory.threeWheeler, VehicleCategory.fourWheeler];
 
   @override

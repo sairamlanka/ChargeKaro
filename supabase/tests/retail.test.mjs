@@ -271,16 +271,18 @@ describe('customer messages', () => {
     await rejectsWith(rpc(other.id, 'resend_booking_email', [b.id, null]), { status: 404, code: 'booking_not_found' });
   });
 
-  test('reminders are queued once for bookings starting within the hour, respecting the preference', async () => {
+  test('reminders are queued once, 30 minutes before the slot, respecting the preference', async () => {
     const s = await approvedStation({ points: ['A', 'B'] });
     const me = await phoneCustomer();
     const quiet = await phoneCustomer();
     await as(quiet.id, (q) => q(`update public.profiles set notification_prefs = '{"reminders": false}' where id = $1`, [quiet.id]));
-    const b = await insertBooking({ customer: me, stationId: s.stationId, pointId: s.pointIds[0], start: addMinutes(new Date(), 45) });
-    const q2 = await insertBooking({ customer: quiet, stationId: s.stationId, pointId: s.pointIds[1], start: addMinutes(new Date(), 50) });
+    const b = await insertBooking({ customer: me, stationId: s.stationId, pointId: s.pointIds[0], start: addMinutes(new Date(), 30) });
+    const q2 = await insertBooking({ customer: quiet, stationId: s.stationId, pointId: s.pointIds[1], start: addMinutes(new Date(), 31) });
+    // An hour away is too early for the reminder.
+    const later = await insertBooking({ customer: me, stationId: s.stationId, pointId: s.pointIds[0], start: addMinutes(new Date(), 65) });
     await rpc('service', 'enqueue_booking_reminders');
     await rpc('service', 'enqueue_booking_reminders');
-    const rows = await sql(`select booking_id from public.customer_messages where template = 'booking_reminder' and booking_id = any($1)`, [[b.id, q2.id]]);
+    const rows = await sql(`select booking_id from public.customer_messages where template = 'booking_reminder' and booking_id = any($1)`, [[b.id, q2.id, later.id]]);
     assert.deepEqual(rows.map((r) => r.booking_id), [b.id]);
   });
 });

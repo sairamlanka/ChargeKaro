@@ -14,6 +14,8 @@ import '../common/format.dart';
 import '../common/widgets.dart';
 import '../station/report_sheet.dart';
 import 'booking_widgets.dart';
+import '../station/ratings.dart';
+import 'support_sheet.dart';
 
 class BookingDetailScreen extends ConsumerWidget {
   const BookingDetailScreen({super.key, required this.bookingId});
@@ -90,7 +92,9 @@ class _Detail extends ConsumerWidget {
         ),
       if (phase == CustomerPhase.paymentProcessing) _Banner(text: l(K.paymentProcessingBody), tone: StatusTone.info),
       if (phase == CustomerPhase.paidSlotLost) _Banner(text: l(K.slotLostBody, {'fee': b.fee.format()}), tone: StatusTone.warning),
-      if (active && b.endAt.isAfter(now)) BookingQrCard(booking: b),
+      if (phase == CustomerPhase.confirmed && b.endAt.isAfter(now)) BookingQrCard(booking: b),
+      if (phase == CustomerPhase.checkedIn && b.checkedInAt != null)
+        _Banner(text: l(K.arrivalVerified, {'time': f.time(b.checkedInAt!)}), tone: StatusTone.success),
       if (phase == CustomerPhase.confirmed && b.endAt.isAfter(now)) ArrivalCard(booking: b, now: now),
       SectionCard(
         title: l(K.stationLabel),
@@ -103,12 +107,18 @@ class _Detail extends ConsumerWidget {
           InfoLine(icon: Icons.event_rounded, label: l(K.date), value: f.dayLong(b.startAt)),
           InfoLine(icon: Icons.schedule_rounded, label: l(K.time), value: '${f.timeRange(b.startAt, b.endAt)} ${l(K.istSuffix)}', emphasize: true),
           InfoLine(icon: Icons.timelapse_rounded, label: l(K.duration), value: f.duration(b.duration)),
+          if (b.originalStartAt != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(l(K.rescheduledFrom, {'when': f.dateTime(b.originalStartAt!)}), style: t.textTheme.bodySmall),
+            ),
           const SizedBox(height: 8),
           Wrap(spacing: 8, runSpacing: 8, children: [
             OutlinedButton.icon(onPressed: () => openDirections(context, b.latitude, b.longitude), icon: const Icon(Icons.directions_rounded), label: Text(l(K.directions))),
             if (b.stationPhone != null)
               OutlinedButton.icon(onPressed: () => callPhone(context, b.stationPhone!), icon: const Icon(Icons.call_rounded), label: Text(l(K.call))),
             OutlinedButton.icon(onPressed: () => context.push('/station/${b.stationId}'), icon: const Icon(Icons.ev_station_rounded), label: Text(l(K.bookAgain))),
+            FilledButton.tonalIcon(onPressed: () => showBookingSupport(context, b), icon: const Icon(Icons.support_agent_rounded), label: Text(l(K.getHelp))),
           ]),
         ]),
       ),
@@ -132,6 +142,8 @@ class _Detail extends ConsumerWidget {
           Text(l(K.chargingCostBody), style: t.textTheme.bodySmall),
         ]),
       ),
+      if (phase == CustomerPhase.completed || phase == CustomerPhase.checkedIn) RateStationCard(booking: b),
+      if ((phase == CustomerPhase.confirmed || phase == CustomerPhase.pendingPayment) && b.endAt.isAfter(now)) _DriverCard(booking: b),
       SectionCard(
         title: l(K.notificationsTitle),
         trailing: TextButton(onPressed: () => _resendEmail(context, ref, b), child: Text(l(K.emailReceipt))),
@@ -141,6 +153,14 @@ class _Detail extends ConsumerWidget {
       SectionCard(
         title: l(K.needHelp),
         child: Column(children: [
+          if (b.canReschedule)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.edit_calendar_rounded, color: t.colorScheme.primary),
+              title: Text(l(K.reschedule)),
+              subtitle: Text(l(K.rescheduleHint, {'fee': b.fee.isZero ? l(K.free) : b.fee.format()})),
+              onTap: () => context.push('/booking/${b.id}/reschedule'),
+            ),
           if (upcoming || active)
             ListTile(
               contentPadding: EdgeInsets.zero,
@@ -440,6 +460,126 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
             ),
           const SizedBox(height: 8),
           TextButton(onPressed: () => Navigator.pop(context), child: Text(l(K.keepBooking))),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Who will charge: the account holder, or someone else (family, fleet).
+/// Staff see the driver's name; the driver gets the booking by SMS.
+class _DriverCard extends ConsumerWidget {
+  const _DriverCard({required this.booking});
+  final CustomerBooking booking;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l = context.l;
+    final b = booking;
+    final own = ref.watch(profileProvider).value?.fullName ?? '';
+    return SectionCard(
+      title: l(K.whoIsCharging),
+      child: Row(children: [
+        Icon(b.bookedForOther ? Icons.person_pin_circle_outlined : Icons.person_outline_rounded),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(b.bookedForOther
+              ? l(K.driverOther, {'name': b.customerName ?? '', 'phone': b.driverPhone == null ? '' : ' · ${b.driverPhone}'})
+              : l(K.driverMe, {'name': own.isEmpty ? (b.customerName ?? '') : own})),
+        ),
+        TextButton(
+          onPressed: () => _edit(context, ref),
+          child: Text(b.bookedForOther ? l(K.driverChange) : l(K.driverSomeoneElse)),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _edit(BuildContext context, WidgetRef ref) async {
+    final b = booking;
+    final result = await showModalBottomSheet<(String?, String?)>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _DriverSheet(booking: b),
+    );
+    if (result == null || !context.mounted) return;
+    final l = context.l;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(retailRepositoryProvider).setDriver(b.id, name: result.$1, phone: result.$2);
+      ref.invalidate(bookingProvider(b.id));
+      ref.invalidate(myBookingsProvider);
+      messenger.showSnackBar(SnackBar(content: Text(l(K.driverSaved))));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(localizedFailureMessage(l, failureOf(e)))));
+    }
+  }
+}
+
+class _DriverSheet extends StatefulWidget {
+  const _DriverSheet({required this.booking});
+  final CustomerBooking booking;
+
+  @override
+  State<_DriverSheet> createState() => _DriverSheetState();
+}
+
+class _DriverSheetState extends State<_DriverSheet> {
+  late final _name = TextEditingController(text: widget.booking.bookedForOther ? widget.booking.customerName : '');
+  late final _phone = TextEditingController(text: (widget.booking.driverPhone ?? '').replaceFirst('+91', ''));
+  String? _nameError;
+  String? _phoneError;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _phone.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final l = context.l;
+    final name = _name.text.trim();
+    final digits = _phone.text.replaceAll(RegExp(r'[^0-9]'), '');
+    setState(() {
+      _nameError = name.isEmpty ? l(K.driverName) : null;
+      _phoneError = digits.isNotEmpty && !RegExp(r'^[6-9][0-9]{9}$').hasMatch(digits) ? l(K.errInvalidPhone) : null;
+    });
+    if (_nameError != null || _phoneError != null) return;
+    Navigator.of(context).pop((name, digits.isEmpty ? null : '+91$digits'));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = context.l;
+    final t = Theme.of(context);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.of(context).viewInsets.bottom),
+      child: SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(l(K.whoIsCharging), style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text(l(K.driverHint, {'ref': widget.booking.reference}), style: t.textTheme.bodySmall),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _name,
+            textCapitalization: TextCapitalization.words,
+            maxLength: 80,
+            decoration: InputDecoration(labelText: l(K.driverName), errorText: _nameError, prefixIcon: const Icon(Icons.person_outline_rounded), counterText: ''),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _phone,
+            keyboardType: TextInputType.phone,
+            maxLength: 10,
+            decoration: InputDecoration(labelText: l(K.driverPhone), prefixText: '+91 ', errorText: _phoneError, prefixIcon: const Icon(Icons.phone_iphone_rounded), counterText: ''),
+            onSubmitted: (_) => _save(),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(onPressed: _save, child: Text(l(K.save))),
+          if (widget.booking.bookedForOther)
+            TextButton(onPressed: () => Navigator.of(context).pop((null, null)), child: Text(l(K.driverIllDrive))),
         ]),
       ),
     );

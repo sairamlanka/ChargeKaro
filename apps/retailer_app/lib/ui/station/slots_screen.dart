@@ -14,6 +14,8 @@ import '../booking/reserve.dart';
 import '../common/fallback.dart';
 import '../common/format.dart';
 import '../common/widgets.dart';
+import '../bookings/booking_widgets.dart';
+import 'estimate.dart';
 import 'station_screen.dart';
 
 /// The station page. Slot booking comes first: pick a date, a length and a
@@ -23,8 +25,11 @@ import 'station_screen.dart';
 /// "full" only when every point is taken. The grid is a snapshot; it
 /// refreshes every minute and the server re-checks before reserving.
 class SlotsScreen extends ConsumerStatefulWidget {
-  const SlotsScreen({super.key, required this.stationId, this.initialDate});
+  const SlotsScreen({super.key, required this.stationId, this.initialDate, this.rescheduleOf});
   final String stationId;
+
+  /// When set, picking a time moves this booking instead of making a new one.
+  final CustomerBooking? rescheduleOf;
 
   /// IST calendar date to open on, e.g. the day of the next free slot.
   final DateTime? initialDate;
@@ -133,7 +138,8 @@ class _SlotsScreenState extends ConsumerState<SlotsScreen> {
     return null;
   }
 
-  List<CustomerBooking> get _mine => ref.read(myBookingsProvider).value ?? const [];
+  List<CustomerBooking> get _mine =>
+      (ref.read(myBookingsProvider).value ?? const []).where((b) => b.id != widget.rescheduleOf?.id).toList();
 
   bool _freeAt(SlotGrid grid, DateTime t, int minutes) =>
       grid.pointsFor(_connector).any((p) => p.point.bookable && p.fits(t, minutes, grid.slotMinutes));
@@ -195,8 +201,40 @@ class _SlotsScreenState extends ConsumerState<SlotsScreen> {
       ));
   }
 
+  /// Waits for [from]..[to] at this station; signs in first if needed.
+  Future<void> _joinWaitlist(DateTime from, DateTime to, int minutes) async {
+    final l = context.l;
+    final messenger = ScaffoldMessenger.of(context);
+    if (ref.read(customerIdProvider).value == null) {
+      context.push('/sign-in?next=${Uri.encodeComponent('/station/${widget.stationId}')}');
+      return;
+    }
+    try {
+      await ref.read(retailRepositoryProvider).joinWaitlist(widget.stationId, from, to, minutes, connector: _connector);
+      ref.invalidate(myWaitlistProvider);
+      final name = ref.read(stationProvider(widget.stationId)).value?.summary.name ?? '';
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(l(K.waitlistJoined, {'station': name}))));
+    } catch (e) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(localizedFailureMessage(l, failureOf(e)))));
+    }
+  }
+
   void _explain(StationCell c) {
     final l = context.l;
+    final mins = _minutes;
+    if (widget.rescheduleOf == null && mins != null && !c.tooLong && (c.state == SlotState.booked || c.state == SlotState.reserved)) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(l(K.slotFullWaitHint)),
+          action: SnackBarAction(label: l(K.joinWaitlist), onPressed: () => _joinWaitlist(c.start, c.start.add(Duration(minutes: mins)), mins)),
+        ));
+      return;
+    }
     _snack(switch (c.state) {
       _ when c.tooLong => l(K.slotTooShortHint),
       SlotState.booked || SlotState.reserved => l(K.slotFullHint),
@@ -234,6 +272,10 @@ class _SlotsScreenState extends ConsumerState<SlotsScreen> {
       _explainOwn(own);
       return;
     }
+    if (widget.rescheduleOf != null) {
+      await _reschedule(widget.rescheduleOf!, start, end);
+      return;
+    }
     final s = detail.summary;
     ref.read(bookingFlowProvider.notifier).selectSlot(
           stationId: s.id,
@@ -250,6 +292,40 @@ class _SlotsScreenState extends ConsumerState<SlotsScreen> {
     setState(() => _continuing = true);
     await continueBooking(context, ref);
     if (mounted) setState(() => _continuing = false);
+  }
+
+  Future<void> _reschedule(CustomerBooking b, DateTime start, DateTime end) async {
+    final l = context.l;
+    final f = RFmt(l);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l(K.rescheduleConfirmTitle)),
+        content: Text(l(K.rescheduleConfirmBody, {'old': f.slot(b.startAt, b.endAt), 'new': f.slot(start, end)})),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l(K.cancel))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l(K.rescheduleMove))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _continuing = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final moved = await ref.read(retailRepositoryProvider).reschedule(b.id, start, end, connector: _connector);
+      ref.invalidate(myBookingsProvider);
+      ref.invalidate(bookingProvider(b.id));
+      // The old check-in QR no longer works; the next view issues a new one.
+      ref.invalidate(bookingQrProvider(b.id));
+      await ref.read(localStoreProvider).clearBookingQrs();
+      messenger.showSnackBar(SnackBar(content: Text(l(K.rescheduleDone, {'when': f.slot(moved.startAt, moved.endAt)}))));
+      if (mounted) context.pop();
+    } catch (e) {
+      ref.invalidate(slotsProvider(_query));
+      messenger.showSnackBar(SnackBar(content: Text(localizedFailureMessage(l, failureOf(e)))));
+    } finally {
+      if (mounted) setState(() => _continuing = false);
+    }
   }
 
   @override
@@ -294,8 +370,9 @@ class _SlotsScreenState extends ConsumerState<SlotsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(detail?.summary.name ?? l(K.stationDetails), maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(widget.rescheduleOf != null ? l(K.rescheduleTitle) : detail?.summary.name ?? l(K.stationDetails), maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
+          if (detail != null && widget.rescheduleOf == null) FavouriteButton(station: detail.summary),
           IconButton(
             tooltip: l(K.refresh),
             onPressed: () => ref.invalidate(slotsProvider(_query)),
@@ -304,7 +381,7 @@ class _SlotsScreenState extends ConsumerState<SlotsScreen> {
         ],
       ),
       body: Column(children: [
-        const StepProgress(step: 0),
+        if (widget.rescheduleOf == null) const StepProgress(step: 0),
         _DateStrip(dates: dates, selected: _date, onSelect: _setDate),
         Expanded(
           child: stationValue.hasError && detail == null
@@ -334,7 +411,12 @@ class _SlotsScreenState extends ConsumerState<SlotsScreen> {
                   ]),
                 ),
                 const SizedBox(width: 12),
-                GradientButton(label: l(K.continueLabel), icon: Icons.arrow_forward_rounded, busy: _continuing, onPressed: () => _continue(detail, grid)),
+                GradientButton(
+                  label: widget.rescheduleOf != null ? l(K.rescheduleMove) : l(K.continueLabel),
+                  icon: widget.rescheduleOf != null ? Icons.edit_calendar_rounded : Icons.arrow_forward_rounded,
+                  busy: _continuing,
+                  onPressed: () => _continue(detail, grid),
+                ),
               ]),
             )
           : null,
@@ -379,6 +461,12 @@ class _SlotsScreenState extends ConsumerState<SlotsScreen> {
     final children = <Widget>[
       if (_lostReason != null)
         _Notice(icon: Icons.info_outline_rounded, text: _lostReason!, tone: StatusTone.warning),
+      if (widget.rescheduleOf case final rb?)
+        _Notice(
+          icon: Icons.edit_calendar_rounded,
+          text: '${rb.stationName} · ${f.slot(rb.startAt, rb.endAt)}\n${l(K.rescheduleHint, {'fee': rb.fee.isZero ? l(K.free) : rb.fee.format()})}',
+          tone: StatusTone.info,
+        ),
       _Notice(icon: Icons.ev_station_rounded, text: l(K.anyPointAssigned), tone: StatusTone.info),
       if (types.length > 1) ...[
         Text(l(K.yourConnector), style: t.textTheme.titleSmall),
@@ -443,6 +531,12 @@ class _SlotsScreenState extends ConsumerState<SlotsScreen> {
               if (_shortestFree(g) case final m?)
                 FallbackAction(l(K.tryLength, {'d': f.duration(Duration(minutes: m))}), () => setState(() => _minutes = m),
                     icon: Icons.timelapse_rounded, primary: true),
+              if (widget.rescheduleOf == null && _minutes != null)
+                FallbackAction(l(K.joinWaitlistDay), () {
+                  final dayStart = _date.subtract(const Duration(hours: 5, minutes: 30));
+                  final from = dayStart.isBefore(DateTime.now()) ? DateTime.now() : dayStart;
+                  _joinWaitlist(from, dayStart.add(const Duration(days: 1)), _minutes!);
+                }, icon: Icons.notifications_active_outlined),
               if (detail?.summary.nextAvailable != null)
                 FallbackAction(l(K.jumpToNextFree, {'when': f.whenStarts(detail!.summary.nextAvailable!.startAt, DateTime.now())}), () {
                   _setDate(RFmt.istDate(detail.summary.nextAvailable!.startAt));
@@ -454,6 +548,7 @@ class _SlotsScreenState extends ConsumerState<SlotsScreen> {
       else
         _SlotGridView(cells: cells, minutes: _minutes, start: _start, isOwn: (t) => _minutes != null && _ownAt(_mine, t, _minutes!) != null, onTap: (c) => _tapCell(g, c)),
       const SizedBox(height: 12),
+      if (detail != null && _start != null) ...[ChargeEstimateCard(detail: detail, minutes: _minutes, connector: _connector), const SizedBox(height: 12)],
       if (policy != null)
         _Notice(
           icon: Icons.directions_walk_rounded,

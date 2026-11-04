@@ -7,8 +7,13 @@ import 'push.dart';
 /// The business the user is working in. Most users belong to one; owners of
 /// several can switch from the More tab.
 class SelectedBusiness extends Notifier<String?> {
+  // Cleared whenever a different account signs in, so nothing chosen by the
+  // previous account carries over.
   @override
-  String? build() => null;
+  String? build() {
+    ref.watch(sessionUserIdProvider);
+    return null;
+  }
 
   void select(String id) => state = id;
 }
@@ -16,13 +21,18 @@ class SelectedBusiness extends Notifier<String?> {
 final selectedBusinessIdProvider = NotifierProvider<SelectedBusiness, String?>(SelectedBusiness.new);
 
 final currentAccessProvider = Provider<BusinessAccess?>((ref) {
-  final list = ref.watch(businessAccessProvider).value ?? const [];
+  // While the list reloads for a newly signed-in account, show nothing rather
+  // than the previous account's businesses.
+  final access = ref.watch(businessAccessProvider);
+  if (access.isReloading) return null;
+  final list = access.value ?? const [];
   if (list.isEmpty) return null;
   final id = ref.watch(selectedBusinessIdProvider);
   return list.firstWhere((a) => a.businessId == id, orElse: () => list.first);
 });
 
 final stationsProvider = FutureProvider.autoDispose<List<Station>>((ref) async {
+  ref.watch(sessionUserIdProvider);
   final access = ref.watch(currentAccessProvider);
   if (access == null) return const [];
   return ref.watch(stationRepositoryProvider).stations(access.businessId);
@@ -31,7 +41,10 @@ final stationsProvider = FutureProvider.autoDispose<List<Station>>((ref) async {
 /// Station used by Bookings and Check-in. Defaults to the first active one.
 class SelectedStation extends Notifier<String?> {
   @override
-  String? build() => null;
+  String? build() {
+    ref.watch(sessionUserIdProvider);
+    return null;
+  }
 
   void select(String id) => state = id;
 }
@@ -39,7 +52,9 @@ class SelectedStation extends Notifier<String?> {
 final selectedStationIdProvider = NotifierProvider<SelectedStation, String?>(SelectedStation.new);
 
 final currentStationProvider = Provider<Station?>((ref) {
-  final list = ref.watch(stationsProvider).value ?? const [];
+  final stations = ref.watch(stationsProvider);
+  if (stations.isReloading) return null;
+  final list = stations.value ?? const [];
   if (list.isEmpty) return null;
   final id = ref.watch(selectedStationIdProvider);
   return list.where((s) => s.id == id).firstOrNull ??

@@ -51,7 +51,12 @@ class NotificationsPage extends ConsumerWidget {
                         await ref.read(notificationRepositoryProvider).markRead([n.id]).catchError((_) => 0);
                         refresh();
                       }
-                      if (n.applicationId != null && context.mounted) context.go('/applications/${n.applicationId}');
+                      if (!context.mounted) return;
+                      if (n.applicationId != null) {
+                        context.go('/applications/${n.applicationId}');
+                      } else if (n.type == 'location.requested') {
+                        context.go('/locations');
+                      }
                     },
                   );
                 },

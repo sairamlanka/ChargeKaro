@@ -22,6 +22,7 @@ class Business {
     this.registeredAddressLine1,
     this.registeredAddressLine2,
     this.registeredCity,
+    this.registeredDistrict,
     this.registeredState,
     this.registeredPostalCode,
     this.statusReason,
@@ -43,6 +44,7 @@ class Business {
       registeredAddressLine1: j.strOrNull('registered_address_line1'),
       registeredAddressLine2: j.strOrNull('registered_address_line2'),
       registeredCity: j.strOrNull('registered_city'),
+      registeredDistrict: j.strOrNull('registered_district'),
       registeredState: j.strOrNull('registered_state'),
       registeredPostalCode: j.strOrNull('registered_postal_code'),
       status: BusinessStatus.parse(j.strOrNull('status')),
@@ -65,6 +67,7 @@ class Business {
   final String? registeredAddressLine1;
   final String? registeredAddressLine2;
   final String? registeredCity;
+  final String? registeredDistrict;
   final String? registeredState;
   final String? registeredPostalCode;
   final BusinessStatus status;
@@ -228,6 +231,7 @@ class ChargingPoint {
     this.ocppChargePointId,
     this.maxBookingMinutesOverride,
     this.restrictionsNote,
+    this.pricePerKwhPaise,
     this.connectors = const [],
     this.archivedAt,
   });
@@ -252,6 +256,7 @@ class ChargingPoint {
       bookingEnabled: j.boolean('booking_enabled', true),
       maxBookingMinutesOverride: j.intOrNull('max_booking_minutes_override'),
       restrictionsNote: j.strOrNull('restrictions_note'),
+      pricePerKwhPaise: j.intOrNull('price_per_kwh_paise'),
       connectors: j.objects('charging_connectors').map(Connector.fromJson).toList()
         ..sort((a, b) => a.number.compareTo(b.number)),
       archivedAt: j.dateTimeOrNull('archived_at'),
@@ -274,6 +279,9 @@ class ChargingPoint {
   final bool bookingEnabled;
   final int? maxBookingMinutesOverride;
   final String? restrictionsNote;
+
+  /// Energy price at this point (paid at the station), paise per kWh.
+  final int? pricePerKwhPaise;
   final List<Connector> connectors;
   final DateTime? archivedAt;
 
@@ -556,6 +564,7 @@ class BusinessMember {
     required this.active,
     this.fullName,
     this.email,
+    this.phone,
     this.stationIds = const [],
   });
 
@@ -570,6 +579,7 @@ class BusinessMember {
       active: j.strOrNull('status') == 'active',
       fullName: profile?.strOrNull('full_name'),
       email: profile?.strOrNull('email'),
+      phone: profile?.strOrNull('phone'),
       stationIds: j.objects('station_assignments').map((a) => a.str('station_id')).toList(),
     );
   }
@@ -581,5 +591,79 @@ class BusinessMember {
   final bool active;
   final String? fullName;
   final String? email;
+  final String? phone;
   final List<String> stationIds;
+
+  String get displayName => fullName ?? email ?? 'Member';
+}
+
+/// A station manager's request to add or remove a staff member, decided by
+/// the business owner (public.business_member_requests).
+@immutable
+class MemberRequest {
+  const MemberRequest({
+    required this.id,
+    required this.businessId,
+    required this.kind,
+    required this.status,
+    required this.requestedBy,
+    required this.createdAt,
+    this.requestedByName,
+    this.email,
+    this.fullName,
+    this.phone,
+    this.stationIds = const [],
+    this.memberId,
+    this.memberName,
+    this.reason,
+    this.decisionNote,
+    this.decidedByName,
+    this.decidedAt,
+  });
+
+  factory MemberRequest.fromJson(Object? json) {
+    final j = Json.of(json);
+    return MemberRequest(
+      id: j.str('id'),
+      businessId: j.str('business_id'),
+      kind: MemberRequestKind.parse(j.strOrNull('kind')),
+      status: MemberRequestStatus.parse(j.strOrNull('status')),
+      requestedBy: j.str('requested_by'),
+      requestedByName: j.strOrNull('requested_by_name'),
+      createdAt: j.dateTime('created_at'),
+      email: j.strOrNull('email'),
+      fullName: j.strOrNull('full_name'),
+      phone: j.strOrNull('phone'),
+      stationIds: j.strings('station_ids'),
+      memberId: j.strOrNull('member_id'),
+      memberName: j.strOrNull('member_name'),
+      reason: j.strOrNull('reason'),
+      decisionNote: j.strOrNull('decision_note'),
+      decidedByName: j.strOrNull('decided_by_name'),
+      decidedAt: j.dateTimeOrNull('decided_at'),
+    );
+  }
+
+  final String id;
+  final String businessId;
+  final MemberRequestKind kind;
+  final MemberRequestStatus status;
+  final String requestedBy;
+  final String? requestedByName;
+  final DateTime createdAt;
+  final String? email;
+  final String? fullName;
+  final String? phone;
+  final List<String> stationIds;
+  final String? memberId;
+  final String? memberName;
+  final String? reason;
+  final String? decisionNote;
+  final String? decidedByName;
+  final DateTime? decidedAt;
+
+  bool get pending => status == MemberRequestStatus.pending;
+
+  /// The person the request is about.
+  String get personName => (kind == MemberRequestKind.add ? fullName ?? email : memberName) ?? 'Staff member';
 }

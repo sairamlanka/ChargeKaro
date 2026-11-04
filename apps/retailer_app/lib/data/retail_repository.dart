@@ -4,13 +4,18 @@ import 'package:shared_data/shared_data.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'firebase_phone.dart';
 import 'models.dart';
 
 /// Everything the Retail App asks of the backend. Guests can call the
 /// discovery methods with the publishable key; the rest need the customer
 /// session created by phone OTP. All authorisation happens server-side.
 class RetailRepository extends Repository {
-  RetailRepository(super.client, {this.timeout = const Duration(seconds: 20)});
+  RetailRepository(super.client, {this.timeout = const Duration(seconds: 20), FirebasePhoneAuth? firebasePhone})
+      : firebasePhone = firebasePhone ?? (FirebasePhoneConfig.usable ? FirebasePhoneAuth() : null);
+
+  /// Set when phone codes come from Firebase instead of Supabase (FIREBASE_OTP).
+  final FirebasePhoneAuth? firebasePhone;
 
   final Duration timeout;
 
@@ -162,10 +167,26 @@ class RetailRepository extends Repository {
   // Phone verification (creates or links the customer account)
   // -------------------------------------------------------------------------
 
-  Future<void> sendOtp(String phone) => guard(() => client.auth.signInWithOtp(phone: phone, shouldCreateUser: true), log: log, what: 'send OTP');
+  Future<void> sendOtp(String phone) {
+    final fb = firebasePhone;
+    if (fb != null) return guard(() => fb.send(phone), log: log, what: 'send OTP (Firebase)');
+    return guard(() => client.auth.signInWithOtp(phone: phone, shouldCreateUser: true), log: log, what: 'send OTP');
+  }
 
-  Future<void> verifyOtp(String phone, String code) =>
-      guard(() => client.auth.verifyOTP(phone: phone, token: code.trim(), type: OtpType.sms), log: log, what: 'verify OTP');
+  Future<void> verifyOtp(String phone, String code) {
+    final fb = firebasePhone;
+    if (fb == null) {
+      return guard(() => client.auth.verifyOTP(phone: phone, token: code.trim(), type: OtpType.sms), log: log, what: 'verify OTP');
+    }
+    // Firebase checks the code; the server turns its token into our session.
+    return guard(() async {
+      final token = await fb.verify(phone, code);
+      final r = await _invoke('firebase-phone-auth', {'action': 'sign_in', 'firebase_token': token});
+      final refresh = r['refresh_token'] as String?;
+      if (refresh == null) throw const AppFailure(FailureKind.server, 'sms_send_failed', 'Please try again.');
+      await client.auth.setSession(refresh);
+    }, log: log, what: 'verify OTP (Firebase)');
+  }
 
   /// Local development only: the last code the dev SMS hook received for
   /// this number (supabase/dev/dev_otp.sql). Null when the hook isn't set up,
@@ -185,10 +206,21 @@ class RetailRepository extends Repository {
       _rpc<dynamic>('dev_mock_payment', {'p_booking_id': bookingId, 'p_outcome': success ? 'success' : 'failure'});
 
   /// Starts a mobile-number change; confirm with [confirmPhoneChange].
-  Future<void> changePhone(String phone) => guard(() => client.auth.updateUser(UserAttributes(phone: phone)));
+  Future<void> changePhone(String phone) {
+    final fb = firebasePhone;
+    if (fb != null) return guard(() => fb.send(phone));
+    return guard(() => client.auth.updateUser(UserAttributes(phone: phone)));
+  }
 
-  Future<void> confirmPhoneChange(String phone, String code) =>
-      guard(() => client.auth.verifyOTP(phone: phone, token: code.trim(), type: OtpType.phoneChange));
+  Future<void> confirmPhoneChange(String phone, String code) {
+    final fb = firebasePhone;
+    if (fb == null) return guard(() => client.auth.verifyOTP(phone: phone, token: code.trim(), type: OtpType.phoneChange));
+    return guard(() async {
+      final token = await fb.verify(phone, code);
+      await _invoke('firebase-phone-auth', {'action': 'change_phone', 'firebase_token': token});
+      await client.auth.refreshSession();
+    });
+  }
 
   Future<void> signOut() => guard(() => client.auth.signOut());
 
@@ -275,12 +307,46 @@ class RetailRepository extends Repository {
     return (list ?? const []).map(CustomerBooking.fromJson).toList();
   }
 
+  /// Moves a confirmed booking to a new time at the same station (once).
+  Future<CustomerBooking> reschedule(String id, DateTime start, DateTime end, {String? connector}) async =>
+      CustomerBooking.fromJson(await _rpc<Object?>('reschedule_booking', {
+        'p_booking_id': id,
+        'p_start_at': start.toUtc().toIso8601String(),
+        'p_end_at': end.toUtc().toIso8601String(),
+        'p_connector_type': connector,
+      }));
+
+  Future<CustomerBooking> setDriver(String bookingId, {String? name, String? phone}) async =>
+      CustomerBooking.fromJson(await _rpc<Object?>('set_booking_driver', {'p_booking_id': bookingId, 'p_name': name, 'p_phone': phone}));
+
+  Future<WaitlistEntry> joinWaitlist(String stationId, DateTime from, DateTime to, int minutes, {String? connector}) async =>
+      WaitlistEntry.fromJson(Json.of(await _rpc<Object?>('join_waitlist', {
+        'p_station_id': stationId,
+        'p_window_start': from.toUtc().toIso8601String(),
+        'p_window_end': to.toUtc().toIso8601String(),
+        'p_minutes': minutes,
+        'p_connector_type': connector,
+      })));
+
+  Future<void> leaveWaitlist(String id) => _rpc<Object?>('leave_waitlist', {'p_id': id});
+
+  Future<List<WaitlistEntry>> myWaitlist() async =>
+      ((await _rpc<List<dynamic>?>('get_my_waitlist')) ?? const []).map((e) => WaitlistEntry.fromJson(Json.of(e))).toList();
+
+  Future<void> submitReview(String bookingId, int rating, String? comment) =>
+      _rpc<Object?>('submit_station_review', {'p_booking_id': bookingId, 'p_rating': rating, 'p_comment': comment});
+
+  Future<StationReviews> stationReviews(String stationId) async =>
+      StationReviews.fromJson(await _rpc<Object?>('get_station_reviews', {'p_station_id': stationId, 'p_limit': 10}));
+
   Future<CustomerBooking> booking(String id) async => CustomerBooking.fromJson(await _rpc<Object?>('get_my_booking', {'p_booking_id': id}));
 
   Future<CustomerBooking> bookingByReference(String reference) async =>
       CustomerBooking.fromJson(await _rpc<Object?>('get_my_booking', {'p_booking_id': null, 'p_reference': reference}));
 
-  Future<String> bookingQr(String id) async => (await _rpc<Map<String, dynamic>>('get_my_booking_qr', {'p_booking_id': id}))['qr_payload'] as String;
+  /// Issues a fresh QR for the booking, revoking any earlier one.
+  Future<BookingQr> issueBookingQr(String id) async =>
+      BookingQr.fromJson(id, await _rpc<Map<String, dynamic>>('get_my_booking_qr', {'p_booking_id': id}));
 
   Future<CancellationPreview> previewCancellation(String id) async =>
       CancellationPreview.fromJson(await _rpc<Object?>('preview_cancellation', {'p_booking_id': id}));

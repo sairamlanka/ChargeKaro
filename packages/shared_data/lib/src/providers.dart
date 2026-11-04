@@ -7,9 +7,11 @@ import 'repositories/admin_repository.dart';
 import 'repositories/auth_repository.dart';
 import 'repositories/booking_repository.dart';
 import 'repositories/finance_repository.dart';
+import 'repositories/location_repository.dart';
 import 'repositories/notification_repository.dart';
 import 'repositories/onboarding_repository.dart';
 import 'repositories/station_repository.dart';
+import 'repositories/team_repository.dart';
 
 /// Overridden in main() once Supabase is initialised, and in tests with fakes.
 final appConfigProvider = Provider<AppConfig>((ref) => AppConfig.fromEnvironment());
@@ -28,6 +30,16 @@ final bookingRepositoryProvider = Provider<BookingRepository>((ref) => BookingRe
 final notificationRepositoryProvider =
     Provider<NotificationRepository>((ref) => NotificationRepository(ref.watch(supabaseClientProvider)));
 final adminRepositoryProvider = Provider<AdminRepository>((ref) => AdminRepository(ref.watch(supabaseClientProvider)));
+final teamRepositoryProvider = Provider<TeamRepository>((ref) => TeamRepository(ref.watch(supabaseClientProvider)));
+final locationRepositoryProvider = Provider<LocationRepository>((ref) => LocationRepository(ref.watch(supabaseClientProvider)));
+
+/// Dropdown lists. Kept for the session: they rarely change.
+final locationStatesProvider = FutureProvider<List<Place>>((ref) => ref.watch(locationRepositoryProvider).states());
+final locationDistrictsProvider =
+    FutureProvider.family<List<Place>, int>((ref, stateId) => ref.watch(locationRepositoryProvider).districts(stateId));
+final locationCitiesProvider =
+    FutureProvider.family<List<Place>, int>((ref, districtId) => ref.watch(locationRepositoryProvider).cities(districtId));
+
 final financeRepositoryProvider = Provider<FinanceRepository>((ref) => FinanceRepository(ref.watch(supabaseClientProvider)));
 
 /// The signed-in user's id, or null. Changes on sign-in, sign-out and token

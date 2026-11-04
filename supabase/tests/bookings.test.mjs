@@ -254,36 +254,42 @@ describe('check-in', () => {
     return { ...station, customer, booking: b };
   }
 
-  test('staff check in by QR payload; duplicate check-in is rejected', async () => {
-    const { owner, businessId, stationId, booking } = await bookingNearNow();
+  test('staff check in by QR; duplicate check-in is rejected', async () => {
+    const { owner, businessId, stationId, booking, customer } = await bookingNearNow();
     const staff = await createUser('staff');
     await rpc(owner.id, 'add_business_member', [businessId, staff.email, 'station_staff', null, [stationId]]);
-    const looked = await rpc(staff.id, 'lookup_booking_for_checkin', [stationId, `CKB1:${booking.qr_token}`]);
-    assert.equal(looked.reference, booking.reference);
-    assert.equal(looked.customer_display_name, 'Test C.');
-    assert.equal(looked.customer_id, undefined, 'customer id is not exposed');
-    const res = await rpc(staff.id, 'check_in_booking', [stationId, `CKB1:${booking.qr_token}`, 'qr']);
-    assert.equal(res.status, 'arrived');
-    await rejectsWith(rpc(staff.id, 'check_in_booking', [stationId, booking.reference, 'reference']), { status: 409, code: 'already_checked_in' });
+    const { qr_payload } = await rpc(customer.id, 'get_my_booking_qr', [booking.id]);
+    const looked = await rpc(staff.id, 'verify_booking_qr', [stationId, qr_payload]);
+    assert.equal(looked.result, 'verified');
+    assert.equal(looked.booking.reference, booking.reference);
+    assert.equal(looked.booking.customer_display_name, null, 'no customer data before check-in');
+    assert.equal(looked.booking.customer_id, undefined, 'customer id is not exposed');
+    const res = await rpc(staff.id, 'checkin_booking', [stationId, booking.id, 'qr', idemKey(), qr_payload]);
+    assert.equal(res.result, 'accepted');
+    assert.equal(res.booking.status, 'arrived');
+    const again = await rpc(staff.id, 'checkin_booking', [stationId, booking.id, 'manual', idemKey(), null, 'other', 'Second try']);
+    assert.equal(again.code, 'already_checked_in');
     const ci = await one(`select checked_in_by, method from public.check_ins where booking_id = $1`, [booking.id]);
     assert.deepEqual(ci, { checked_in_by: staff.id, method: 'qr' });
   });
 
-  test('manual reference entry works and is case-insensitive', async () => {
+  test('manual check-in, then charging start and completion', async () => {
     const { owner, stationId, booking } = await bookingNearNow();
-    const res = await rpc(owner.id, 'check_in_booking', [stationId, booking.reference.toLowerCase(), 'reference']);
-    assert.equal(res.status, 'arrived');
-    const progressed = await rpc(owner.id, 'update_booking_progress', [booking.id, 'in_progress']);
-    assert.equal(progressed.status, 'in_progress');
-    const done = await rpc(owner.id, 'update_booking_progress', [booking.id, 'completed']);
-    assert.equal(done.status, 'completed');
+    const res = await rpc(owner.id, 'checkin_booking', [stationId, booking.id, 'manual', idemKey(), null, 'qr_not_working']);
+    assert.equal(res.booking.status, 'arrived');
+    const progressed = await rpc(owner.id, 'start_charging', [booking.id, idemKey()]);
+    assert.equal(progressed.booking.status, 'in_progress');
+    const done = await rpc(owner.id, 'complete_charging', [booking.id, idemKey()]);
+    assert.equal(done.booking.status, 'completed');
   });
 
   test('bookings of another station or business cannot be checked in', async () => {
     const { booking } = await bookingNearNow();
     const other = await approvedStation();
-    await rejectsWith(rpc(other.owner.id, 'check_in_booking', [other.stationId, booking.reference, 'reference']), { status: 404 });
-    await rejectsWith(rpc(other.owner.id, 'lookup_booking_for_checkin', [other.stationId, booking.reference]), { status: 404 });
+    const res = await rpc(other.owner.id, 'checkin_booking', [other.stationId, booking.id, 'manual', idemKey(), null, 'qr_not_working']);
+    assert.equal(res.code, 'booking_not_found');
+    const search = await rpc(other.owner.id, 'search_bookings_for_checkin', [other.stationId, booking.reference]);
+    assert.deepEqual(search.bookings, []);
   });
 
   test('staff not assigned to the station cannot check in', async () => {
@@ -291,7 +297,8 @@ describe('check-in', () => {
     const { businessId, stationId, booking } = await bookingNearNow({ owner });
     const staff = await createUser('staff');
     await rpc(owner.id, 'add_business_member', [businessId, staff.email, 'station_staff', null, []]);
-    await rejectsWith(rpc(staff.id, 'check_in_booking', [stationId, booking.reference, 'reference']), { status: 403 });
+    const res = await rpc(staff.id, 'checkin_booking', [stationId, booking.id, 'manual', idemKey(), null, 'qr_not_working']);
+    assert.equal(res.code, 'not_authorized');
   });
 
   test('check-in outside the window is refused', async () => {
@@ -299,9 +306,11 @@ describe('check-in', () => {
     const { stationId, pointIds } = await approvedStation({ owner, policy: { early_checkin_minutes: 15, arrival_grace_minutes: 10 } });
     const customer = await createUser('customer');
     const early = await insertBooking({ customer, stationId, pointId: pointIds[0], start: ist(1, 10) });
-    await rejectsWith(rpc(owner.id, 'check_in_booking', [stationId, early.reference, 'reference']), { status: 409, code: 'too_early' });
+    const e = await rpc(owner.id, 'checkin_booking', [stationId, early.id, 'manual', idemKey(), null, 'qr_not_working']);
+    assert.equal(e.code, 'too_early');
     const late = await insertBooking({ customer, stationId, pointId: pointIds[0], start: new Date(Date.now() - 20 * 60000), minutes: 60 });
-    await rejectsWith(rpc(owner.id, 'check_in_booking', [stationId, late.reference, 'reference']), { status: 409, code: 'grace_period_over' });
+    const l = await rpc(owner.id, 'checkin_booking', [stationId, late.id, 'manual', idemKey(), null, 'qr_not_working']);
+    assert.equal(l.code, 'too_late');
   });
 
   test('unpaid or cancelled bookings cannot be checked in', async () => {
@@ -310,7 +319,8 @@ describe('check-in', () => {
     const customer = await createUser('customer');
     const start = new Date(Date.now() + 5 * 60000);
     const pending = await insertBooking({ customer, stationId, pointId: pointIds[0], start, status: 'payment_pending', paymentStatus: 'pending', fee: 1200 });
-    await rejectsWith(rpc(owner.id, 'check_in_booking', [stationId, pending.reference, 'reference']), { status: 409, code: 'booking_not_checkinable' });
+    const res = await rpc(owner.id, 'checkin_booking', [stationId, pending.id, 'manual', idemKey(), null, 'qr_not_working']);
+    assert.equal(res.code, 'payment_pending');
   });
 });
 

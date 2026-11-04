@@ -19,11 +19,12 @@ class SetupBusinessPage extends ConsumerStatefulWidget {
 class _SetupBusinessPageState extends ConsumerState<SetupBusinessPage> {
   final _form = GlobalKey<FormState>();
   final _c = {
-    for (final k in ['legal', 'display', 'owner', 'phone', 'email', 'reg', 'gstin', 'addr1', 'addr2', 'city', 'state', 'pin'])
+    for (final k in ['legal', 'display', 'owner', 'phone', 'email', 'reg', 'gstin', 'addr1', 'addr2', 'pin'])
       k: TextEditingController(),
   };
   BusinessType _type = BusinessType.values.first;
   bool _busy = false;
+  AddressPlace _place = const AddressPlace();
 
   @override
   void initState() {
@@ -46,6 +47,10 @@ class _SetupBusinessPageState extends ConsumerState<SetupBusinessPage> {
 
   Future<void> _submit() async {
     if (!_form.currentState!.validate()) return;
+    // Read before saving: the page closes once the business exists.
+    final locations = ref.read(locationRepositoryProvider);
+    final place = _place;
+    final legalName = _v('legal') ?? '';
     setState(() => _busy = true);
     final ok = await runAction(context, () async {
       final id = await ref.read(stationRepositoryProvider).createBusiness(
@@ -59,13 +64,22 @@ class _SetupBusinessPageState extends ConsumerState<SetupBusinessPage> {
             gstin: _v('gstin')?.toUpperCase(),
             addressLine1: _v('addr1'),
             addressLine2: _v('addr2'),
-            city: _v('city'),
-            state: _v('state'),
+            city: _place.city.isEmpty ? null : _place.city,
+            district: _place.district.isEmpty ? null : _place.district,
+            state: _place.state.isEmpty ? null : _place.state,
             postalCode: _v('pin'),
           );
       ref.read(selectedBusinessIdProvider.notifier).select(id);
       ref.invalidate(businessAccessProvider);
     });
+    if (ok && place.hasNew) {
+      // Ask ChargeKaro to add a state/district/city typed under "Other".
+      try {
+        await locations.requestNew(place, context: 'Business: $legalName');
+      } catch (_) {
+        // The business is saved with the typed value either way.
+      }
+    }
     if (mounted) setState(() => _busy = false);
     if (!ok) return;
   }
@@ -121,8 +135,10 @@ class _SetupBusinessPageState extends ConsumerState<SetupBusinessPage> {
             const SizedBox(height: 8),
             _field('addr1', 'Address line 1'),
             _field('addr2', 'Address line 2'),
-            _field('city', 'City', caps: TextCapitalization.words),
-            _field('state', 'State', caps: TextCapitalization.words),
+            LocationFields(
+              required: false,
+              onChanged: (p) => _place = p,
+            ),
             _field('pin', 'PIN code', validator: Validators.optional(Validators.pinCode), keyboard: TextInputType.number),
             const SizedBox(height: 8),
             FilledButton(onPressed: _busy ? null : _submit, child: const Text('Continue')),

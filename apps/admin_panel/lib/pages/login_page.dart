@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_data/shared_data.dart';
@@ -48,8 +49,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       setState(() => _error = 'Enter your email address first.');
       return;
     }
-    await runAction(context, () => ref.read(authRepositoryProvider).sendPasswordReset(email),
-        success: 'If an account exists, a reset link has been sent.');
+    // On the website the link comes back here, opens "Choose a new password"
+    // and signs in. Open it in the same browser that asked for it.
+    final back = kIsWeb ? '${Uri.base.origin}/' : null;
+    await runAction(context, () => ref.read(authRepositoryProvider).sendPasswordReset(email, redirectTo: back),
+        success: 'If an account exists, a reset link has been sent. Open it in this browser.');
   }
 
   @override

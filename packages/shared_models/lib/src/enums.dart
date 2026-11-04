@@ -524,3 +524,31 @@ enum VehicleCategory with WireEnum {
     return null;
   }
 }
+
+enum MemberRequestKind with WireEnum {
+  add('add', 'Add staff'),
+  remove('remove', 'Remove staff');
+
+  const MemberRequestKind(this.wire, this.label);
+  @override
+  final String wire;
+  @override
+  final String label;
+
+  static MemberRequestKind parse(String? wire) => _parse(values, wire, add);
+}
+
+enum MemberRequestStatus with WireEnum {
+  pending('pending', 'Waiting for owner'),
+  approved('approved', 'Approved'),
+  rejected('rejected', 'Declined'),
+  cancelled('cancelled', 'Cancelled');
+
+  const MemberRequestStatus(this.wire, this.label);
+  @override
+  final String wire;
+  @override
+  final String label;
+
+  static MemberRequestStatus parse(String? wire) => _parse(values, wire, pending);
+}

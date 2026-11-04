@@ -105,7 +105,12 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                       for (final (i, b) in list.indexed)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 10),
-                          child: Entrance(index: i, child: BookingTile(booking: b, now: now, onTap: () => context.push('/booking/${b.id}'))),
+                          child: Entrance(index: i, child: BookingTile(
+                            booking: b,
+                            now: now,
+                            onTap: () => context.push('/booking/${b.id}'),
+                            onBookAgain: _tab == _Tab.upcoming ? null : () => context.push('/station/${b.stationId}'),
+                          )),
                         ),
                     ]),
             );

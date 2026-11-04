@@ -2,10 +2,13 @@
 library;
 
 export 'src/access.dart';
+export 'src/admin_checkin.dart';
 export 'src/booking.dart';
+export 'src/checkin.dart';
 export 'src/enums.dart';
 export 'src/finance.dart';
 export 'src/json.dart';
+export 'src/location.dart';
 export 'src/misc.dart';
 export 'src/money.dart';
 export 'src/onboarding.dart';

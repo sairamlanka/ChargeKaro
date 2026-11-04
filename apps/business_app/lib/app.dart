@@ -10,7 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'pages/auth/auth_pages.dart';
 import 'pages/bookings/booking_detail_page.dart';
 import 'pages/bookings/bookings_page.dart';
-import 'pages/bookings/scan_page.dart';
+import 'pages/checkin/checkin_home_page.dart';
 import 'pages/home_page.dart';
 import 'pages/more/more_pages.dart';
 import 'pages/setup_business_page.dart';
@@ -54,6 +54,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       final signedIn = auth.currentUser != null;
       if (!signedIn) return _publicPaths.contains(loc) ? null : '/welcome';
       if (refresh.recovering && loc != '/reset-password') return '/reset-password';
+      // Logins created by the owner start with a temporary password.
+      if (auth.currentUser?.userMetadata?['must_change_password'] == true && loc != '/reset-password') return '/reset-password';
       if (loc == '/reset-password') return null;
       if (_publicPaths.contains(loc)) return '/home';
 
@@ -87,7 +89,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               routes: [GoRoute(path: ':id', builder: (_, s) => BookingDetailPage(id: s.pathParameters['id']!))],
             ),
           ]),
-          StatefulShellBranch(routes: [GoRoute(path: '/scan', builder: (_, _) => const ScanPage())]),
+          StatefulShellBranch(routes: [GoRoute(path: '/scan', builder: (_, _) => const CheckinHomePage())]),
           StatefulShellBranch(routes: [
             GoRoute(
               path: '/stations',
