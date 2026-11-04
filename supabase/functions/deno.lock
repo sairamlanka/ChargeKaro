@@ -1,9 +1,11 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@std/assert@1": "1.0.13",
     "jsr:@std/assert@1.0.13": "1.0.13",
     "jsr:@std/internal@^1.0.6": "1.0.14",
     "npm:@supabase/supabase-js@2.117.3": "2.117.3",
+    "npm:jose@5.9.6": "5.9.6",
     "npm:pg@8.16.3": "8.16.3"
   },
   "jsr": {
@@ -65,6 +67,9 @@
     },
     "iceberg-js@0.8.1": {
       "integrity": "sha512-1dhVQZXhcHje7798IVM+xoo/1ZdVfzOMIc8/rgVSijRK38EDqOJoGula9N/8ZI5RD8QTxNQtK/Gozpr+qUqRRA=="
+    },
+    "jose@5.9.6": {
+      "integrity": "sha512-AMlnetc9+CV9asI19zHmrgS/WYsWUwCn2R7RzlbJWD7F9eWYUTGyBmU9o6PxngtLGOiDGPRu+Uc4fhKzbpteZQ=="
     },
     "pg-cloudflare@1.4.1": {
       "integrity": "sha512-6PQbsFWZcp9EmJEwy5cGQ2La+AMWpP46lgbb8X+U/XsHIUweYDNCpeuKck5RxL2MdVFi7krbbEi5nX4Zh7JhrQ=="

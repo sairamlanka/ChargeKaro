@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:shared_data/shared_data.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
@@ -11,7 +12,35 @@ import '../../state/providers.dart';
 import '../common/format.dart';
 import '../common/widgets.dart';
 
-final bookingQrProvider = FutureProvider.autoDispose.family<String, String>((ref, id) => ref.watch(retailRepositoryProvider).bookingQr(id));
+/// The booking's check-in QR. Reuses the code this device was last given
+/// while it is valid; otherwise asks the server, which revokes any older
+/// code (another phone, a screenshot) so only one works at a time.
+class BookingQrNotifier extends AsyncNotifier<BookingQr> {
+  BookingQrNotifier(this.bookingId);
+  final String bookingId;
+
+  @override
+  Future<BookingQr> build() async {
+    final cached = ref.read(localStoreProvider).bookingQr(bookingId);
+    if (cached != null && !cached.expiredAt(DateTime.now())) return cached;
+    return _issue();
+  }
+
+  Future<BookingQr> _issue() async {
+    final qr = await ref.read(retailRepositoryProvider).issueBookingQr(bookingId);
+    await ref.read(localStoreProvider).saveBookingQr(qr);
+    return qr;
+  }
+
+  /// New code on request (lost, rejected or shared code).
+  Future<void> renew() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(_issue);
+  }
+}
+
+final bookingQrProvider =
+    AsyncNotifierProvider.autoDispose.family<BookingQrNotifier, BookingQr, String>(BookingQrNotifier.new);
 
 (String, StatusTone, IconData) phaseLook(L l, CustomerPhase p) => switch (p) {
       CustomerPhase.pendingPayment => (l(K.phasePendingPayment), StatusTone.warning, Icons.hourglass_top_rounded),
@@ -72,7 +101,7 @@ class ReferenceBlock extends StatelessWidget {
   }
 }
 
-/// The check-in QR. Loaded from the server; falls back to the reference.
+/// The check-in QR with its expiry. Falls back to the reference.
 class BookingQrCard extends ConsumerWidget {
   const BookingQrCard({super.key, required this.booking});
   final CustomerBooking booking;
@@ -80,13 +109,17 @@ class BookingQrCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l = context.l;
+    final f = RFmt(l);
     final t = Theme.of(context);
     final qr = ref.watch(bookingQrProvider(booking.id));
+    final closed = qr.error is AppFailure && (qr.error! as AppFailure).code == 'qr_expired';
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(children: [
           Text(l(K.showAtStation), style: t.textTheme.titleSmall),
+          const SizedBox(height: 4),
+          PhasePill(booking.phaseAt(DateTime.now()), dense: true),
           const SizedBox(height: 12),
           SizedBox(
             width: 200,
@@ -96,23 +129,38 @@ class BookingQrCard extends ConsumerWidget {
               error: (_, _) => Center(
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
                   const Icon(Icons.qr_code_2_rounded, size: 64),
-                  Text(l(K.qrUnavailable), textAlign: TextAlign.center, style: t.textTheme.bodySmall),
-                  TextButton(onPressed: () => ref.invalidate(bookingQrProvider(booking.id)), child: Text(l(K.tryAgain))),
+                  Text(closed ? l(K.qrClosed) : l(K.qrUnavailable), textAlign: TextAlign.center, style: t.textTheme.bodySmall),
+                  if (!closed) TextButton(onPressed: () => ref.invalidate(bookingQrProvider(booking.id)), child: Text(l(K.tryAgain))),
                 ]),
               ),
-              data: (payload) => Container(
+              data: (code) => Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
                 child: Semantics(
                   label: l(K.qrSemantics),
-                  child: QrImageView(data: payload, version: QrVersions.auto, backgroundColor: Colors.white),
+                  child: QrImageView(data: code.payload, version: QrVersions.auto, backgroundColor: Colors.white),
                 ),
               ),
             ),
           ),
+          if (qr.value case final code?) ...[
+            const SizedBox(height: 8),
+            Text(l(K.qrValidUntil, {'time': f.time(code.expiresAt)}), style: t.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+            Text(l(K.qrOnlyLatest), textAlign: TextAlign.center, style: t.textTheme.bodySmall),
+          ],
           const SizedBox(height: 12),
           ReferenceBlock(booking.reference),
           Text(l(K.qrFallback), textAlign: TextAlign.center, style: t.textTheme.bodySmall),
+          if (!closed && !qr.isLoading)
+            TextButton.icon(
+              icon: const Icon(Icons.autorenew_rounded),
+              label: Text(l(K.qrNewCode)),
+              onPressed: () async {
+                if (await confirm(context, title: l(K.qrNewCodeQ), message: l(K.qrNewCodeBody), confirmLabel: l(K.qrNewCode))) {
+                  await ref.read(bookingQrProvider(booking.id).notifier).renew();
+                }
+              },
+            ),
         ]),
       ),
     );
@@ -207,10 +255,13 @@ String refundStatusLabel(L l, RefundStatus s) => switch (s) {
 
 /// One row in My Bookings.
 class BookingTile extends StatelessWidget {
-  const BookingTile({super.key, required this.booking, required this.onTap, required this.now});
+  const BookingTile({super.key, required this.booking, required this.onTap, required this.now, this.onBookAgain});
   final CustomerBooking booking;
   final VoidCallback onTap;
   final DateTime now;
+
+  /// Shown as a "Book again" button on finished bookings.
+  final VoidCallback? onBookAgain;
 
   @override
   Widget build(BuildContext context) {
@@ -245,6 +296,15 @@ class BookingTile extends StatelessWidget {
                     PhasePill(b.phaseAt(now), dense: true),
                     Text(b.reference, style: t.textTheme.labelSmall),
                   ]),
+                  if (onBookAgain != null) ...[
+                    const SizedBox(height: 8),
+                    FilledButton.tonalIcon(
+                      onPressed: onBookAgain,
+                      style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+                      icon: const Icon(Icons.replay_rounded, size: 18),
+                      label: Text(l(K.bookAgain)),
+                    ),
+                  ],
                 ]),
               ),
               const Icon(Icons.chevron_right_rounded),

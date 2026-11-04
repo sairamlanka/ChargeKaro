@@ -10,6 +10,7 @@ import '../../state/providers.dart';
 import '../../state/search.dart';
 import '../common/format.dart';
 import '../common/widgets.dart';
+import 'ratings.dart';
 import 'report_sheet.dart';
 
 /// What the customer needs to know about a station, shown below the slot
@@ -67,11 +68,12 @@ class StationInfo extends ConsumerWidget {
       SectionCard(
         title: l(K.feesTitle),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          InfoLine(icon: Icons.bolt_rounded, label: l(K.chargingCost), value: l(K.chargingCostBody)),
+          InfoLine(icon: Icons.bolt_rounded, label: l(K.chargingCost), value: _priceText(l, detail)),
           if (s.paymentMethods.isNotEmpty)
             InfoLine(icon: Icons.payments_outlined, label: l(K.payAtStationWith), value: s.paymentMethods.map((m) => m.label).join(', ')),
         ]),
       ),
+      StationRatingsSection(stationId: s.id),
       SectionCard(title: l(K.bookingRules), child: _RulesList(policy: detail.policy)),
       if (s.amenities.isNotEmpty || s.parkingSpaces > 0)
         SectionCard(
@@ -121,6 +123,15 @@ class StationInfo extends ConsumerWidget {
       for (final w in sections) Padding(padding: const EdgeInsets.only(bottom: 12), child: w),
     ]);
   }
+}
+
+/// Published energy prices (paid at the station), or the generic note.
+String _priceText(L l, StationDetail d) {
+  final prices = [for (final p in d.points) ?p.pricePerKwh]..sort((a, b) => a.paise.compareTo(b.paise));
+  if (prices.isEmpty) return l(K.chargingCostBody);
+  final low = prices.first.format();
+  final high = prices.last.format();
+  return '${l(K.pricePerKwh, {'price': low == high ? low : '$low–$high'})} · ${l(K.chargingCostBody)}';
 }
 
 class _UnavailableCard extends StatelessWidget {

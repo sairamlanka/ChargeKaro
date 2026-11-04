@@ -39,10 +39,14 @@ class AuthRepository extends Repository {
   Future<void> resendConfirmation(String email) =>
       guard(() => client.auth.resend(type: OtpType.signup, email: email.trim().toLowerCase(), emailRedirectTo: redirectUrl));
 
-  Future<void> sendPasswordReset(String email) =>
-      guard(() => client.auth.resetPasswordForEmail(email.trim().toLowerCase(), redirectTo: redirectUrl));
+  /// [redirectTo] overrides the app's redirect, e.g. the admin website's own address.
+  Future<void> sendPasswordReset(String email, {String? redirectTo}) =>
+      guard(() => client.auth.resetPasswordForEmail(email.trim().toLowerCase(), redirectTo: redirectTo ?? redirectUrl));
 
-  Future<void> updatePassword(String password) => guard(() => client.auth.updateUser(UserAttributes(password: password)));
+  /// Also clears the "change your temporary password" flag set on logins the
+  /// business owner created (team-members Edge Function).
+  Future<void> updatePassword(String password) =>
+      guard(() => client.auth.updateUser(UserAttributes(password: password, data: {'must_change_password': false})));
 
   Future<void> signOut() => guard(() => client.auth.signOut());
 

@@ -24,9 +24,12 @@ class _AuthScaffold extends StatelessWidget {
       appBar: AppBar(backgroundColor: Colors.transparent, foregroundColor: Colors.white),
       body: SingleChildScrollView(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          SizedBox(
-            height: 230,
-            child: AuroraBackground(
+          // The header grows with the title, so a long title that wraps on a
+          // narrow phone (or with large text) doesn't overflow.
+          Stack(children: [
+            const Positioned.fill(child: AuroraBackground(child: SizedBox.shrink())),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 230),
               child: SafeArea(
                 bottom: false,
                 child: Padding(
@@ -55,14 +58,14 @@ class _AuthScaffold extends StatelessWidget {
                 ),
               ),
             ),
-          ),
+          ]),
           Transform.translate(
             offset: const Offset(0, -20),
-            child: Container(
-              decoration: BoxDecoration(
-                color: t.colorScheme.surfaceContainerLowest,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-              ),
+            // A Material (not a coloured Container) so tick-box and radio
+            // tiles on the form can paint their ink splashes.
+            child: Material(
+              color: t.colorScheme.surfaceContainerLowest,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 440),
@@ -531,7 +534,9 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
 
   @override
   Widget build(BuildContext context) => _AuthScaffold(
-        title: 'Choose a new password',
+        title: ref.read(authRepositoryProvider).currentUser?.userMetadata?['must_change_password'] == true
+            ? 'Set your own password'
+            : 'Choose a new password',
         icon: Icons.password_rounded,
         children: [
           Form(

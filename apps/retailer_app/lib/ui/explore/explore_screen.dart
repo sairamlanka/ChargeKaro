@@ -356,12 +356,24 @@ class _ResultsToolbar extends ConsumerWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             // The search mode stays visible so route results are never
             // mistaken for nearby ones.
-            Pill(
-              trip != null ? l(K.modeRoute) : l(K.modeLive),
-              icon: trip != null ? Icons.alt_route_rounded : Icons.my_location_rounded,
-              tone: StatusTone.info,
-              dense: true,
-            ),
+            Row(children: [
+              Pill(
+                trip != null ? l(K.modeRoute) : l(K.modeLive),
+                icon: trip != null ? Icons.alt_route_rounded : Icons.my_location_rounded,
+                tone: StatusTone.info,
+                dense: true,
+              ),
+              const Spacer(),
+              if (trip?.plan != null)
+                Flexible(
+                  child: TextButton.icon(
+                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                    onPressed: () => context.push('/trip-plan'),
+                    icon: const Icon(Icons.ev_station_rounded, size: 18),
+                    label: Text(l(K.planStops), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                ),
+            ]),
             const SizedBox(height: 6),
             Row(children: [
               Expanded(
@@ -659,6 +671,8 @@ class _StartSections extends ConsumerWidget {
     final t = Theme.of(context);
     final now = DateTime.now();
     final recent = ref.watch(recentStationsProvider);
+    final favourites = ref.watch(favouriteStationsProvider);
+    final waits = ref.watch(myWaitlistProvider).value ?? const <WaitlistEntry>[];
     final next = ref.watch(nextBookingProvider);
     final draft = ref.watch(bookingFlowProvider);
     final children = <Widget>[
@@ -678,6 +692,58 @@ class _StartSections extends ConsumerWidget {
               '${l(K.reportByLabel)}: ${l(K.reportByValue, {'time': f.time(next.reportBy), 'mins': next.policy.reportBeforeMinutes})}',
           onTap: () => context.push('/booking/${next.id}'),
         ),
+      for (final w in waits.where((w) => w.notifiedStart != null && w.notifiedStart!.isAfter(now)))
+        _ActionCard(
+          icon: Icons.notifications_active_rounded,
+          title: l(K.waitlistOpenTitle),
+          subtitle: l(K.waitlistOpenBody, {'station': w.stationName, 'when': f.dateTime(w.notifiedStart!)}),
+          onTap: () => context.push('/station/${w.stationId}?date=${RFmt.istDate(w.notifiedStart!).toIso8601String().substring(0, 10)}'),
+          trailing: FilledButton(
+            onPressed: () => context.push('/station/${w.stationId}?date=${RFmt.istDate(w.notifiedStart!).toIso8601String().substring(0, 10)}'),
+            child: Text(l(K.bookNow)),
+          ),
+        ),
+      if (waits.any((w) => w.notifiedAt == null)) ...[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+          child: Text(l(K.waitlistTitle), style: t.textTheme.titleMedium),
+        ),
+        for (final w in waits.where((w) => w.notifiedAt == null))
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.hourglass_top_rounded)),
+              title: Text(w.stationName, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text('${f.slot(w.windowStart, w.windowEnd)} · ${f.duration(Duration(minutes: w.minutes))}', maxLines: 2),
+              trailing: IconButton(
+                tooltip: l(K.leaveWaitlist),
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () async {
+                  await ref.read(retailRepositoryProvider).leaveWaitlist(w.id).catchError((_) {});
+                  ref.invalidate(myWaitlistProvider);
+                },
+              ),
+              onTap: () => context.push('/station/${w.stationId}?date=${RFmt.istDate(w.windowStart).toIso8601String().substring(0, 10)}'),
+            ),
+          ),
+      ],
+      if (favourites.isNotEmpty) ...[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+          child: Text(l(K.favourites), style: t.textTheme.titleMedium),
+        ),
+        for (final r in favourites.take(6))
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.favorite_rounded, color: Colors.redAccent)),
+              title: Text(r.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text(r.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+              trailing: FilledButton.tonal(onPressed: () => context.push('/station/${r.id}'), child: Text(l(K.bookAgain))),
+              onTap: () => context.push('/station/${r.id}'),
+            ),
+          ),
+      ],
       if (recent.isNotEmpty) ...[
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),

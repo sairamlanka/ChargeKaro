@@ -11,6 +11,7 @@ import '../../state/providers.dart';
 import '../booking/phone_verification.dart';
 import '../common/fallback.dart';
 import '../common/widgets.dart';
+import '../station/estimate.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -33,6 +34,26 @@ class ProfileScreen extends ConsumerWidget {
           subtitle: Text(l.code == 'te' ? 'తెలుగు' : 'English'),
           onTap: () => _pickLanguage(context, ref),
         ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.electric_car_rounded),
+          title: Text(l(K.myVehicle)),
+          subtitle: Text(switch (ref.watch(vehicleProvider)) {
+            final v? => '${v.batteryKwh.toStringAsFixed(v.batteryKwh == v.batteryKwh.roundToDouble() ? 0 : 1)} kWh · ${v.fromPercent}% → ${v.toPercent}%',
+            null => l(K.vehicleNotSet),
+          }),
+          trailing: const Icon(Icons.edit_outlined),
+          onTap: () => editVehicle(context, ref),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          secondary: const Icon(Icons.notifications_active_outlined),
+          title: Text(l(K.bookingReminders)),
+          subtitle: Text(l(K.bookingRemindersHint)),
+          value: ref.watch(remindersEnabledProvider),
+          onChanged: (v) => ref.read(remindersEnabledProvider.notifier).set(v),
+        ),
+        const AppearanceSettings(),
         ListTile(
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.help_outline_rounded),
@@ -174,6 +195,7 @@ class ProfileScreen extends ConsumerWidget {
                             final ok = await confirm(context, title: l(K.signOutQ), message: l(K.signOutBody), confirmLabel: l(K.signOut));
                             if (!ok) return;
                             await repo.signOut().catchError((_) {});
+                            await ref.read(localStoreProvider).clearBookingQrs();
                             ref.read(bookingFlowProvider.notifier).clear();
                             ref.invalidate(myBookingsProvider);
                           },
@@ -501,6 +523,65 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
           ],
         ]),
       ),
+    );
+  }
+}
+
+/// Theme (phone setting, light, dark) and a bigger-text option for older
+/// users. Saved on this device.
+class AppearanceSettings extends ConsumerWidget {
+  const AppearanceSettings({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l = context.l;
+    final t = Theme.of(context);
+    final look = ref.watch(appearanceProvider);
+    final ctl = ref.read(appearanceProvider.notifier);
+    const scales = AppearanceController.textScales;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.palette_outlined, color: t.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 16),
+          Text(l(K.themeLabel), style: t.textTheme.bodyLarge),
+        ]),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<ThemeMode>(
+            showSelectedIcon: false,
+            segments: [
+              ButtonSegment(value: ThemeMode.system, icon: const Icon(Icons.phone_android_rounded, size: 18), label: Text(l(K.themeSystem))),
+              ButtonSegment(value: ThemeMode.light, icon: const Icon(Icons.light_mode_rounded, size: 18), label: Text(l(K.themeLight))),
+              ButtonSegment(value: ThemeMode.dark, icon: const Icon(Icons.dark_mode_rounded, size: 18), label: Text(l(K.themeDark))),
+            ],
+            selected: {look.themeMode},
+            onSelectionChanged: (v) => ctl.setThemeMode(v.first),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(children: [
+          Icon(Icons.format_size_rounded, color: t.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 16),
+          Text(l(K.textSize), style: t.textTheme.bodyLarge),
+        ]),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<double>(
+            showSelectedIcon: false,
+            segments: [
+              ButtonSegment(value: scales[0], label: Text(l(K.textNormal))),
+              ButtonSegment(value: scales[1], label: Text(l(K.textLarge))),
+              ButtonSegment(value: scales[2], label: Text(l(K.textExtraLarge))),
+            ],
+            selected: {look.textScale},
+            onSelectionChanged: (v) => ctl.setTextScale(v.first),
+          ),
+        ),
+      ]),
     );
   }
 }

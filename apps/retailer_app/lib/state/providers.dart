@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_data/shared_data.dart';
 
@@ -9,7 +9,9 @@ import '../data/checkout/checkout.dart';
 import '../data/local_store.dart';
 import '../data/location_service.dart';
 import '../data/models.dart';
+import '../data/reminders.dart';
 import '../data/retail_repository.dart';
+import '../l10n/l10n.dart';
 import 'search.dart';
 
 /// Overridden in main() (and in tests).
@@ -116,6 +118,113 @@ class RecentStationsController extends Notifier<List<RecentStation>> {
   Future<void> clear() async {
     await ref.read(localStoreProvider).clearRecent();
     state = const [];
+  }
+}
+
+/// Phone notifications for bookings; overridden in main() on Android/iOS.
+final reminderSchedulerProvider = Provider<ReminderScheduler>((ref) => ReminderScheduler.none);
+
+final remindersEnabledProvider = NotifierProvider<RemindersEnabledController, bool>(RemindersEnabledController.new);
+
+class RemindersEnabledController extends Notifier<bool> {
+  @override
+  bool build() => ref.watch(localStoreProvider).remindersEnabled();
+
+  Future<void> set(bool on) async {
+    state = on;
+    await ref.read(localStoreProvider).setRemindersEnabled(on);
+  }
+}
+
+/// Keeps the phone's scheduled reminders in step with the customer's
+/// bookings (new, moved, cancelled) and language. Watched by the app root.
+final reminderSyncProvider = Provider<void>((ref) {
+  final scheduler = ref.watch(reminderSchedulerProvider);
+  final enabled = ref.watch(remindersEnabledProvider);
+  final signedIn = ref.watch(customerIdProvider).value != null;
+  final bookings = ref.watch(myBookingsProvider).value;
+  final locale = ref.watch(localeProvider);
+  if (!enabled || !signedIn) {
+    scheduler.replaceAll(const []);
+    return;
+  }
+  if (bookings == null) return;
+  final l = L(locale, L.stringsFor(locale.languageCode));
+  scheduler.replaceAll(planReminders(bookings, l, DateTime.now()));
+});
+
+final myWaitlistProvider = FutureProvider<List<WaitlistEntry>>((ref) async {
+  final id = ref.watch(customerIdProvider).value;
+  if (id == null) return const [];
+  return ref.watch(retailRepositoryProvider).myWaitlist();
+});
+
+final stationReviewsProvider = FutureProvider.autoDispose.family<StationReviews, String>(
+  (ref, id) => ref.watch(retailRepositoryProvider).stationReviews(id),
+);
+
+final vehicleProvider = NotifierProvider<VehicleController, VehicleProfile?>(VehicleController.new);
+
+class VehicleController extends Notifier<VehicleProfile?> {
+  @override
+  VehicleProfile? build() => ref.watch(localStoreProvider).vehicle();
+
+  Future<void> set(VehicleProfile? v) async {
+    state = v;
+    await ref.read(localStoreProvider).setVehicle(v);
+  }
+}
+
+final favouriteStationsProvider = NotifierProvider<FavouriteStationsController, List<RecentStation>>(FavouriteStationsController.new);
+
+/// Starred stations, kept on this device.
+class FavouriteStationsController extends Notifier<List<RecentStation>> {
+  @override
+  List<RecentStation> build() => ref.watch(localStoreProvider).favouriteStations();
+
+  bool contains(String id) => state.any((s) => s.id == id);
+
+  /// Adds or removes [s]; returns true when it is now a favourite.
+  Future<bool> toggle(StationSummary s) async {
+    final adding = !contains(s.id);
+    final list = adding
+        ? [RecentStation(id: s.id, name: s.name, subtitle: s.shortAddress, viewedAt: DateTime.now()), ...state]
+        : state.where((r) => r.id != s.id).toList();
+    state = list;
+    await ref.read(localStoreProvider).setFavouriteStations(list);
+    return adding;
+  }
+}
+
+/// Theme and text size chosen in Profile.
+@immutable
+class Appearance {
+  const Appearance({this.themeMode = ThemeMode.system, this.textScale = 1.0});
+  final ThemeMode themeMode;
+  final double textScale;
+}
+
+final appearanceProvider = NotifierProvider<AppearanceController, Appearance>(AppearanceController.new);
+
+class AppearanceController extends Notifier<Appearance> {
+  static const textScales = [1.0, 1.15, 1.3];
+
+  @override
+  Appearance build() {
+    final store = ref.watch(localStoreProvider);
+    final mode = ThemeMode.values.where((m) => m.name == store.themeMode()).firstOrNull ?? ThemeMode.system;
+    final scale = store.textScale();
+    return Appearance(themeMode: mode, textScale: textScales.contains(scale) ? scale : 1.0);
+  }
+
+  Future<void> setThemeMode(ThemeMode m) async {
+    state = Appearance(themeMode: m, textScale: state.textScale);
+    await ref.read(localStoreProvider).setThemeMode(m.name);
+  }
+
+  Future<void> setTextScale(double v) async {
+    state = Appearance(themeMode: state.themeMode, textScale: v);
+    await ref.read(localStoreProvider).setTextScale(v);
   }
 }
 

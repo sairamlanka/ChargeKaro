@@ -13,6 +13,7 @@ import 'package:retailer_app/state/search.dart';
 import 'package:retailer_app/ui/explore/area_search_screen.dart';
 import 'package:retailer_app/ui/explore/explore_screen.dart';
 import 'package:retailer_app/ui/explore/route_search_screen.dart';
+import 'package:retailer_app/ui/explore/trip_planner_screen.dart';
 import 'package:retailer_app/ui/station/slots_screen.dart';
 
 import 'support.dart';
@@ -78,6 +79,7 @@ void main() {
   GoRouter router() => GoRouter(routes: [
         GoRoute(path: '/', builder: (_, _) => const ExploreScreen()),
         GoRoute(path: '/route-search', builder: (_, _) => const RouteSearchScreen()),
+        GoRoute(path: '/trip-plan', builder: (_, _) => const TripPlannerScreen()),
         GoRoute(path: '/pick-location', builder: (_, _) => const AreaSearchScreen()),
         GoRoute(path: '/station/:id', builder: (_, s) => SlotsScreen(stationId: s.pathParameters['id']!)),
       ]);
@@ -242,6 +244,30 @@ void main() {
       await settle(t);
       expect(find.text('Gachibowli to Vijayawada'), findsWidgets);
       verify(() => repo.searchAlongRoute(_plan, 2)).called(1);
+    });
+
+    testWidgets('charging stops are planned from the battery and range', (t) async {
+      usePhone(t);
+      final repo = mockRepo();
+      when(() => repo.planRoutes(any(), any())).thenAnswer((_) async => [_plan]);
+      when(() => repo.searchAlongRoute(any(), any())).thenAnswer((_) async => _along());
+      await saveTrip();
+      await store.setVehicle(const VehicleProfile(batteryKwh: 40, rangeKm: 300));
+      await t.pumpWidget(harness(store: store, router: router(), overrides: [retailRepositoryProvider.overrideWithValue(repo)]));
+      await settle(t);
+      await tapVisible(t, find.text('Plan charging stops'));
+      await settle(t);
+      expect(find.text('Charging stops'), findsOneWidget);
+      // 275 km from 80% with 300 km range: one stop at the only station, and
+      // still short of the destination.
+      expect(find.textContaining('Stop 1 · at 42 km'), findsOneWidget);
+      expect(find.textContaining('No station within reach after about 251 km'), findsOneWidget);
+      // A longer range makes it.
+      await t.enterText(find.widgetWithText(TextField, 'Range on a full battery (km)'), '350');
+      await settle(t);
+      expect(find.textContaining('No station within reach'), findsNothing);
+      expect(find.textContaining('Stops: 1'), findsOneWidget);
+      expect(store.vehicle()!.rangeKm, 350);
     });
 
     test('best stops: free points first, then on the route, then the smallest detour', () {

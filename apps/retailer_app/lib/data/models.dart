@@ -241,6 +241,7 @@ class PointInfo {
     this.statusUpdatedAt,
     this.unavailableReason,
     this.restrictionsNote,
+    this.pricePerKwh,
   });
 
   factory PointInfo.fromJson(Json j) => PointInfo(
@@ -258,6 +259,7 @@ class PointInfo {
         restrictionsNote: j.strOrNull('restrictions_note'),
         maxBookingMinutes: j.integer('max_booking_minutes', 120),
         connectors: j.objects('connectors').map(ConnectorInfo.fromJson).toList(),
+        pricePerKwh: j['price_per_kwh_paise'] == null ? null : Money(j.integer('price_per_kwh_paise', 0)),
       );
 
   final String id;
@@ -274,6 +276,9 @@ class PointInfo {
   final String? restrictionsNote;
   final int maxBookingMinutes;
   final List<ConnectorInfo> connectors;
+
+  /// Energy price at this point, paid at the station. Null = not published.
+  final Money? pricePerKwh;
 
   String get label => name == null || name!.isEmpty ? code : '$code · $name';
 }
@@ -932,6 +937,15 @@ class CustomerBooking {
     this.refunds = const [],
     this.messages = const [],
     this.events = const [],
+    this.checkinOpensAt,
+    this.checkinClosesAt,
+    this.rescheduleCount = 0,
+    this.canReschedule = false,
+    this.originalStartAt,
+    this.myRating,
+    this.myReviewComment,
+    this.bookedForOther = false,
+    this.driverPhone,
   });
 
   factory CustomerBooking.fromJson(Object? json) {
@@ -978,8 +992,36 @@ class CustomerBooking {
       refunds: j.objects('refunds').map(RefundInfo.fromJson).toList(),
       messages: j.objects('messages').map(MessageInfo.fromJson).toList(),
       events: j.objects('events').map(TimelineEvent.fromJson).toList(),
+      checkinOpensAt: j.dateTimeOrNull('checkin_opens_at'),
+      checkinClosesAt: j.dateTimeOrNull('checkin_closes_at'),
+      rescheduleCount: j.integer('reschedule_count', 0),
+      canReschedule: j.boolean('can_reschedule'),
+      originalStartAt: j.dateTimeOrNull('original_start_at'),
+      myRating: j.intOrNull('my_rating'),
+      myReviewComment: j.strOrNull('my_review_comment'),
+      bookedForOther: j.boolean('booked_for_other'),
+      driverPhone: j.strOrNull('driver_phone'),
     );
   }
+
+  /// Reschedule: how often it was moved, whether it can move now (server
+  /// rule: once, before the cancellation cut-off) and its first start time.
+  final int rescheduleCount;
+  final bool canReschedule;
+  final DateTime? originalStartAt;
+
+  /// The customer's own station rating for this booking (1-5), if given.
+  final int? myRating;
+  final String? myReviewComment;
+
+  /// Someone else is charging: [customerName] is then the driver's name.
+  final bool bookedForOther;
+  final String? driverPhone;
+
+  /// Arrival window as the server computes it (falls back to the policy for
+  /// older responses).
+  final DateTime? checkinOpensAt;
+  final DateTime? checkinClosesAt;
 
   final String id;
   final String reference;
@@ -1052,8 +1094,8 @@ class CustomerBooking {
   bool isUpcomingAt(DateTime now) => endAt.isAfter(now) && (status == BookingStatus.confirmed || status == BookingStatus.paymentPending);
 
   /// Check-in opens [start − early]; the point is held until [start + grace].
-  DateTime get arrivalOpensAt => startAt.subtract(Duration(minutes: policy.earlyCheckinMinutes));
-  DateTime get arrivalClosesAt => startAt.add(Duration(minutes: policy.arrivalGraceMinutes));
+  DateTime get arrivalOpensAt => checkinOpensAt ?? startAt.subtract(Duration(minutes: policy.earlyCheckinMinutes));
+  DateTime get arrivalClosesAt => checkinClosesAt ?? startAt.add(Duration(minutes: policy.arrivalGraceMinutes));
 
   /// When the customer is asked to be at the station.
   DateTime get reportBy => startAt.subtract(Duration(minutes: policy.reportBeforeMinutes));
@@ -1180,4 +1222,170 @@ String maskEmail(String? email) {
   final name = email.substring(0, at);
   final shown = name.length <= 2 ? name.substring(0, 1) : name.substring(0, 2);
   return '$shown•••${email.substring(at)}';
+}
+
+/// A check-in QR issued by the server. Only the latest one works: asking
+/// for a new one revokes the previous code. The payload holds an opaque
+/// random token, nothing about the customer or payment.
+@immutable
+class BookingQr {
+  const BookingQr({required this.bookingId, required this.payload, required this.expiresAt, this.issuedAt});
+
+  factory BookingQr.fromJson(String bookingId, Object? json) {
+    final j = Json.of(json);
+    return BookingQr(
+      bookingId: bookingId,
+      payload: j.str('qr_payload'),
+      expiresAt: j.dateTime('expires_at'),
+      issuedAt: j.dateTimeOrNull('issued_at'),
+    );
+  }
+
+  final String bookingId;
+  final String payload;
+  final DateTime expiresAt;
+  final DateTime? issuedAt;
+
+  bool expiredAt(DateTime now) => !now.isBefore(expiresAt);
+
+  Map<String, dynamic> toJson() => {
+        'qr_payload': payload,
+        'expires_at': expiresAt.toUtc().toIso8601String(),
+        'issued_at': issuedAt?.toUtc().toIso8601String(),
+      };
+}
+
+/// Ratings shown on the station page.
+@immutable
+class StationReviews {
+  const StationReviews({this.average, this.count = 0, this.stars = const {}, this.recent = const []});
+  factory StationReviews.fromJson(Object? json) {
+    final j = Json.of(json);
+    final stars = j.objectOrNull('stars');
+    return StationReviews(
+      average: j['average'] == null ? null : j.number('average'),
+      count: j.integer('count', 0),
+      stars: {for (var i = 1; i <= 5; i++) i: stars?.integer('$i', 0) ?? 0},
+      recent: j.objects('recent').map(StationReview.fromJson).toList(),
+    );
+  }
+  final double? average;
+  final int count;
+  final Map<int, int> stars;
+  final List<StationReview> recent;
+}
+
+@immutable
+class StationReview {
+  const StationReview({required this.rating, required this.name, required this.createdAt, this.comment});
+  factory StationReview.fromJson(Json j) =>
+      StationReview(rating: j.integer('rating', 0), name: j.strOrNull('name') ?? '', comment: j.strOrNull('comment'), createdAt: j.dateTime('created_at'));
+  final int rating;
+  final String name;
+  final String? comment;
+  final DateTime createdAt;
+}
+
+/// The customer's car, for charge estimates. Kept on the device.
+@immutable
+class VehicleProfile {
+  const VehicleProfile({required this.batteryKwh, this.fromPercent = 20, this.toPercent = 80, this.rangeKm});
+  factory VehicleProfile.fromJson(Map<String, dynamic> j) => VehicleProfile(
+        batteryKwh: (j['kwh'] as num).toDouble(),
+        fromPercent: (j['from'] as num?)?.toInt() ?? 20,
+        toPercent: (j['to'] as num?)?.toInt() ?? 80,
+        rangeKm: (j['range_km'] as num?)?.toDouble(),
+      );
+  final double batteryKwh;
+  final int fromPercent;
+  final int toPercent;
+
+  /// Distance on a full battery, as the driver knows it. Null until set.
+  final double? rangeKm;
+  Map<String, dynamic> toJson() => {'kwh': batteryKwh, 'from': fromPercent, 'to': toPercent, 'range_km': ?rangeKm};
+
+  /// [rangeKm], or a rough guess from the battery size: small packs are
+  /// two- and three-wheelers (about 30 km per kWh), bigger ones cars (about 6.5).
+  double get fullRangeKm => rangeKm ?? (batteryKwh < 10 ? batteryKwh * 30 : batteryKwh * 6.5);
+
+  VehicleProfile copyWith({double? rangeKm}) =>
+      VehicleProfile(batteryKwh: batteryKwh, fromPercent: fromPercent, toPercent: toPercent, rangeKm: rangeKm ?? this.rangeKm);
+
+  double get neededKwh => batteryKwh * (toPercent - fromPercent).clamp(0, 100) / 100;
+}
+
+/// Rough charge estimate: energy needed, time at the charger's power (with
+/// a 15% loss/taper allowance, never above the slot's length), and cost at
+/// the station's published price range.
+@immutable
+class ChargeEstimate {
+  const ChargeEstimate({required this.energyKwh, required this.fullMinutes, required this.powerKw, this.slotKwh, this.lowCost, this.highCost, this.lowPrice});
+
+  static const efficiency = 0.85;
+
+  factory ChargeEstimate.of(VehicleProfile v, {required double powerKw, int? slotMinutes, List<Money> prices = const []}) {
+    final energy = v.neededKwh;
+    final effective = powerKw * efficiency;
+    final minutes = effective <= 0 ? 0 : (energy / effective * 60).ceil();
+    final slotKwh = slotMinutes == null ? null : effective * slotMinutes / 60;
+    final billed = slotKwh == null ? energy : (slotKwh < energy ? slotKwh : energy);
+    Money? cost(Money p) => Money((p.paise * billed).round());
+    final sorted = [...prices]..sort((a, b) => a.paise.compareTo(b.paise));
+    return ChargeEstimate(
+      energyKwh: energy,
+      fullMinutes: minutes,
+      powerKw: powerKw,
+      slotKwh: slotKwh,
+      lowCost: sorted.isEmpty ? null : cost(sorted.first),
+      highCost: sorted.isEmpty ? null : cost(sorted.last),
+      lowPrice: sorted.isEmpty ? null : sorted.first,
+    );
+  }
+
+  final double energyKwh;
+  final int fullMinutes;
+  final double powerKw;
+
+  /// Energy the chosen slot length can deliver, if a length is chosen.
+  final double? slotKwh;
+  final Money? lowCost;
+  final Money? highCost;
+  final Money? lowPrice;
+
+  bool get slotTooShort => slotKwh != null && slotKwh! + 0.05 < energyKwh;
+}
+
+/// A wait for a free time at a full station.
+@immutable
+class WaitlistEntry {
+  const WaitlistEntry({
+    required this.id,
+    required this.stationId,
+    required this.stationName,
+    required this.windowStart,
+    required this.windowEnd,
+    required this.minutes,
+    this.notifiedAt,
+    this.notifiedStart,
+  });
+  factory WaitlistEntry.fromJson(Json j) => WaitlistEntry(
+        id: j.str('id'),
+        stationId: j.str('station_id'),
+        stationName: j.strOrNull('station_name') ?? '',
+        windowStart: j.dateTime('window_start'),
+        windowEnd: j.dateTime('window_end'),
+        minutes: j.integer('minutes', 30),
+        notifiedAt: j.dateTimeOrNull('notified_at'),
+        notifiedStart: j.dateTimeOrNull('notified_start'),
+      );
+  final String id;
+  final String stationId;
+  final String stationName;
+  final DateTime windowStart;
+  final DateTime windowEnd;
+  final int minutes;
+
+  /// Set when a booking was cancelled and a time in the window became free.
+  final DateTime? notifiedAt;
+  final DateTime? notifiedStart;
 }

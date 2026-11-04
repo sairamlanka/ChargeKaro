@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import 'data/reminders.dart';
 import 'l10n/l10n.dart';
 import 'state/providers.dart';
 import 'ui/booking/confirmation_screen.dart';
@@ -12,11 +13,13 @@ import 'ui/booking/payment_screen.dart';
 import 'ui/booking/verify_screen.dart';
 import 'ui/bookings/booking_detail_screen.dart';
 import 'ui/bookings/bookings_screen.dart';
+import 'ui/bookings/reschedule_screen.dart';
 import 'ui/common/fallback.dart';
 import 'ui/common/widgets.dart';
 import 'ui/explore/area_search_screen.dart';
 import 'ui/explore/explore_screen.dart';
 import 'ui/explore/route_search_screen.dart';
+import 'ui/explore/trip_planner_screen.dart';
 import 'ui/profile/help_screen.dart';
 import 'ui/profile/profile_screen.dart';
 import 'ui/shell.dart';
@@ -41,6 +44,7 @@ GoRouter buildRouter() => GoRouter(
         ),
         // Along My Route: source and destination.
         GoRoute(path: '/route-search', builder: (_, _) => const RouteSearchScreen()),
+        GoRoute(path: '/trip-plan', builder: (_, _) => const TripPlannerScreen()),
         // Near Me with a place picked by hand, when location can't be used.
         GoRoute(path: '/pick-location', builder: (_, _) => const AreaSearchScreen()),
         GoRoute(path: '/area-search', redirect: (_, _) => '/pick-location'),
@@ -62,6 +66,7 @@ GoRouter buildRouter() => GoRouter(
         GoRoute(path: '/book/pay/:id', builder: (_, s) => PaymentScreen(bookingId: s.pathParameters['id']!)),
         GoRoute(path: '/book/done/:id', builder: (_, s) => ConfirmationScreen(bookingId: s.pathParameters['id']!)),
         GoRoute(path: '/booking/:id', builder: (_, s) => BookingDetailScreen(bookingId: s.pathParameters['id']!)),
+        GoRoute(path: '/booking/:id/reschedule', builder: (_, s) => RescheduleScreen(bookingId: s.pathParameters['id']!)),
         GoRoute(path: '/find-booking', builder: (_, _) => const FindBookingScreen()),
         GoRoute(path: '/sign-in', builder: (_, s) => SignInScreen(next: s.uri.queryParameters['next'])),
         GoRoute(path: '/profile/phone', builder: (_, _) => const ChangePhoneScreen()),
@@ -82,18 +87,62 @@ class RetailApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final locale = ref.watch(localeProvider);
+    final look = ref.watch(appearanceProvider);
+    ref.watch(reminderSyncProvider);
     return MaterialApp.router(
       onGenerateTitle: (context) => context.l(K.appTitle),
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
+      themeMode: look.themeMode,
       locale: locale,
       supportedLocales: L.supported,
       localizationsDelegates: const [L.delegate, GlobalMaterialLocalizations.delegate, GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate],
       routerConfig: ref.watch(routerProvider),
-      builder: (context, child) => ConnectivityBanner(child: AppStatusGate(child: child ?? const SizedBox.shrink())),
+      builder: (context, child) {
+        final app = _ReminderTaps(child: ConnectivityBanner(child: AppStatusGate(child: child ?? const SizedBox.shrink())));
+        if (look.textScale == 1.0) return app;
+        // Bigger text on top of the phone's own setting, capped so layouts hold.
+        final mq = MediaQuery.of(context);
+        final phone = mq.textScaler.scale(1);
+        return MediaQuery(data: mq.copyWith(textScaler: TextScaler.linear((phone * look.textScale).clamp(1.0, 2.0))), child: app);
+      },
     );
   }
+}
+
+/// Opens the booking when the customer taps one of its reminders.
+class _ReminderTaps extends ConsumerStatefulWidget {
+  const _ReminderTaps({required this.child});
+  final Widget child;
+
+  @override
+  ConsumerState<_ReminderTaps> createState() => _ReminderTapsState();
+}
+
+class _ReminderTapsState extends ConsumerState<_ReminderTaps> {
+  @override
+  void initState() {
+    super.initState();
+    LocalReminderScheduler.tapped.addListener(_open);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _open());
+  }
+
+  @override
+  void dispose() {
+    LocalReminderScheduler.tapped.removeListener(_open);
+    super.dispose();
+  }
+
+  void _open() {
+    final route = LocalReminderScheduler.tapped.value;
+    if (route == null || !route.startsWith('/booking/')) return;
+    LocalReminderScheduler.tapped.value = null;
+    ref.read(routerProvider).push(route);
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// Maintenance mode and forced updates, read from the server. If the

@@ -37,6 +37,30 @@ Future<void> callPhone(BuildContext context, String phone) async {
   if (!ok) messenger.showSnackBar(SnackBar(content: Text(msg)));
 }
 
+/// Heart toggle that stars a station for one-tap rebooking later.
+class FavouriteButton extends ConsumerWidget {
+  const FavouriteButton({super.key, required this.station});
+  final StationSummary station;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l = context.l;
+    final on = ref.watch(favouriteStationsProvider).any((s) => s.id == station.id);
+    return IconButton(
+      tooltip: on ? l(K.removeFavourite) : l(K.addFavourite),
+      color: on ? Colors.redAccent : null,
+      icon: Icon(on ? Icons.favorite_rounded : Icons.favorite_border_rounded),
+      onPressed: () async {
+        final messenger = ScaffoldMessenger.of(context);
+        final added = await ref.read(favouriteStationsProvider.notifier).toggle(station);
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(added ? l(K.favouriteAdded) : l(K.favouriteRemoved))));
+      },
+    );
+  }
+}
+
 /// A small icon + text pill. Meaning is always in the text.
 class Pill extends StatelessWidget {
   const Pill(this.label, {super.key, this.icon, this.tone = StatusTone.neutral, this.dense = false});

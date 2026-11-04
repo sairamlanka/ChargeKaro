@@ -56,6 +56,7 @@ class PointsTab extends ConsumerWidget {
                         const SizedBox(height: 4),
                         Text('${p.currentType.label} · ${p.maxPowerKw.toStringAsFixed(1)} kW · ${p.connectors.map((c) => c.type.label).join(', ')}'),
                         Text('For ${p.vehicleCompatibility.map((v) => v.label).join(', ')}'),
+                        Text(p.pricePerKwhPaise == null ? 'Energy price not set' : 'Energy price ${Money(p.pricePerKwhPaise!).format()} per kWh'),
                         Text(
                           '${p.bookingEnabled ? 'Bookable' : 'Not bookable'} · status ${p.statusSource.label.toLowerCase()}, updated ${Fmt.relative(p.statusUpdatedAt)}'
                           '${p.statusNote == null ? '' : ' · ${p.statusNote}'}',
@@ -153,6 +154,8 @@ class _PointEditorState extends ConsumerState<PointEditor> {
   late final _name = TextEditingController(text: widget.point?.name);
   late final _power = TextEditingController(text: widget.point?.maxPowerKw.toString());
   late final _restrictions = TextEditingController(text: widget.point?.restrictionsNote);
+  late final _price = TextEditingController(
+      text: widget.point?.pricePerKwhPaise == null ? '' : (widget.point!.pricePerKwhPaise! / 100).toStringAsFixed(2));
   late CurrentType _current = widget.point?.currentType ?? CurrentType.ac;
   late Set<VehicleCategory> _vehicles = widget.point?.vehicleCompatibility ?? {VehicleCategory.fourWheeler};
   late List<ConnectorType> _connectors = widget.point?.connectors.map((c) => c.type).toList() ?? [ConnectorType.type2Ac];
@@ -161,7 +164,7 @@ class _PointEditorState extends ConsumerState<PointEditor> {
 
   @override
   void dispose() {
-    for (final c in [_code, _name, _power, _restrictions]) {
+    for (final c in [_code, _name, _power, _restrictions, _price]) {
       c.dispose();
     }
     super.dispose();
@@ -179,6 +182,7 @@ class _PointEditorState extends ConsumerState<PointEditor> {
       'vehicle_compatibility': _vehicles.map((v) => v.wire).toList(),
       'booking_enabled': _bookable,
       'restrictions_note': _restrictions.text.trim().isEmpty ? null : _restrictions.text.trim(),
+      'price_per_kwh_paise': _price.text.trim().isEmpty ? null : (double.parse(_price.text.trim()) * 100).round(),
     };
     final connectors = [for (final c in _connectors) <String, Object?>{'connector_type': c.wire}];
     final ok = await runAction(context, () async {
@@ -221,6 +225,24 @@ class _PointEditorState extends ConsumerState<PointEditor> {
               decoration: const InputDecoration(labelText: 'Maximum power (kW)'),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               validator: Validators.decimalRange(0.5, 1000, field: 'Power'),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _price,
+              decoration: const InputDecoration(
+                labelText: 'Energy price per kWh (₹, optional)',
+                helperText: 'What drivers pay you at the station. Shown in the app so they can estimate the cost.',
+                helperMaxLines: 2,
+                prefixText: '₹ ',
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              validator: (v) {
+                final t = v?.trim() ?? '';
+                if (t.isEmpty) return null;
+                final n = double.tryParse(t);
+                if (n == null || n < 0 || n > 100) return 'Enter a price between ₹0 and ₹100';
+                return null;
+              },
             ),
             const SizedBox(height: 12),
             Text('Vehicles', style: Theme.of(context).textTheme.titleSmall),

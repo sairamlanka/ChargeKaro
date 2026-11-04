@@ -12,6 +12,11 @@ import '../common/widgets.dart';
 const supportEmail = String.fromEnvironment('SUPPORT_EMAIL');
 const supportPhone = String.fromEnvironment('SUPPORT_PHONE');
 
+/// Full legal pages, hosted with the admin website (apps/admin_panel/web/legal).
+const termsPageUrl = String.fromEnvironment('TERMS_URL');
+const refundPageUrl = String.fromEnvironment('REFUND_URL');
+const privacyPageUrl = String.fromEnvironment('PRIVACY_URL');
+
 class HelpScreen extends ConsumerWidget {
   const HelpScreen({super.key, this.focusTerms = false});
   final bool focusTerms;
@@ -66,6 +71,13 @@ class HelpScreen extends ConsumerWidget {
               Text(l(K.termsSummaryBody), style: t.textTheme.bodyMedium?.copyWith(height: 1.5)),
               const SizedBox(height: 10),
               Text(l(K.privacySummaryBody), style: t.textTheme.bodyMedium?.copyWith(height: 1.5)),
+              for (final (key, url) in [(K.legalTermsPage, termsPageUrl), (K.legalRefundPage, refundPageUrl), (K.legalPrivacyPage, privacyPageUrl)])
+                if (url.isNotEmpty)
+                  TextButton.icon(
+                    onPressed: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                    label: Text(l(key)),
+                  ),
             ],
           ),
         ),

@@ -2,7 +2,7 @@
 // The real implementation wraps a service-role supabase-js client and must
 // only ever run inside Edge Functions.
 
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.117.3';
 import { type DbError, fromDbError, HttpError } from './http.ts';
 import { requireEnv } from './env.ts';
 

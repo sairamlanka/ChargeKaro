@@ -90,7 +90,8 @@ class SearchFilters {
       final b = now.toUtc().add(const Duration(hours: 5, minutes: 30));
       if (a.year != b.year || a.month != b.month || a.day != b.day) return false;
     }
-    if (amenities.isNotEmpty && !amenities.every(s.amenities.contains)) return false;
+    // "Open 24×7" also matches stations whose weekly hours are round the clock.
+    if (amenities.isNotEmpty && !amenities.every((a) => s.amenities.contains(a) || (a == Amenity.open24x7 && s.is24x7))) return false;
     if (vehicle != null && s.vehicleTypes.isNotEmpty && !s.vehicleTypes.contains(vehicle)) return false;
     if (bookableOnly && !s.bookable) return false;
     return true;

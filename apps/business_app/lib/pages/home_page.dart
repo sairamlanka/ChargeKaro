@@ -234,9 +234,9 @@ class _UpNext extends StatelessWidget {
                     Text('Up next ${Fmt.until(b.startAt)}', style: t.textTheme.labelLarge?.copyWith(color: t.colorScheme.onSurfaceVariant)),
                   ]),
                   const SizedBox(height: 2),
-                  Text(b.customerDisplayName ?? b.reference, style: t.textTheme.titleMedium),
+                  Text(b.staffTitle, style: t.textTheme.titleMedium),
                   Text(
-                    [b.reference, if (b.chargingPointCode != null) 'Point ${b.chargingPointCode}', ?b.vehicleLabel].join(' · '),
+                    [if (b.customerRevealed) b.reference, if (b.chargingPointCode != null) 'Point ${b.chargingPointCode}', ?(b.vehicleLabel ?? b.vehicleHint)].join(' · '),
                     style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
                     overflow: TextOverflow.ellipsis,
                   ),

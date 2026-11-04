@@ -90,7 +90,7 @@ class _ReviewBody extends ConsumerWidget {
           KeyValue('Email', b.contactEmail),
           KeyValue('Registration no.', b.registrationNumber),
           KeyValue('GSTIN', b.gstin),
-          KeyValue('Registered address', [b.registeredAddressLine1, b.registeredAddressLine2, b.registeredCity, b.registeredState, b.registeredPostalCode].whereType<String>().join(', ')),
+          KeyValue('Registered address', [b.registeredAddressLine1, b.registeredAddressLine2, b.registeredCity, b.registeredDistrict, b.registeredState, b.registeredPostalCode].whereType<String>().join(', ')),
         ]),
       ),
       const SizedBox(height: 16),

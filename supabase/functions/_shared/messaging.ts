@@ -95,6 +95,28 @@ export function renderMessage(m: ClaimedMessage): OutgoingMessage {
       subject = `Refund processed: ${ref}`;
       lines = [`The refund for ChargeKaro booking ${ref} has been processed by our payment provider.`];
       break;
+    case 'checked_in':
+      subject = `Arrival verified: ${ref}`;
+      lines = [`You are checked in at ${station} for ChargeKaro booking ${ref} (point ${p.point_code}).`];
+      break;
+    case 'charging_started':
+      subject = `Charging started: ${ref}`;
+      lines = [`Charging has started for ChargeKaro booking ${ref} at ${station}.`];
+      break;
+    case 'charging_completed':
+      subject = `Charging completed: ${ref}`;
+      lines = [
+        `Your charging session for ChargeKaro booking ${ref} at ${station} is complete.`,
+        'Please pay the charging fee directly at the station.',
+      ];
+      break;
+    case 'booking_no_show':
+      subject = `Marked as no-show: ${ref}`;
+      lines = [
+        `ChargeKaro booking ${ref} at ${station} (${when}) was marked as a no-show because check-in did not happen in time.`,
+        'The booking fee is not refunded for no-shows.',
+      ];
+      break;
     default:
       throw new PermanentSendError(`unknown_template:${m.template}`);
   }

@@ -143,10 +143,11 @@ void main() {
       final owner = BookingRepository(_as('OWNER_ID'));
       final now = DateTime.now();
       final b = (await owner.forStation(stationId, now.subtract(const Duration(days: 1)), now.add(const Duration(days: 30)))).first;
-      final found = await BookingRepository(client).lookupForCheckIn(stationId, b.reference.toLowerCase());
-      expect(found.id, b.id);
-      await expectLater(BookingRepository(client).lookupForCheckIn(stationId, 'CK0000000000'),
-          throwsA(isA<AppFailure>().having((f) => f.kind, 'kind', FailureKind.notFound)));
+      final found = await BookingRepository(client).searchForCheckIn(stationId, b.reference.toLowerCase());
+      expect(found.bookings.single.id, b.id);
+      expect(found.bookings.single.customerRevealed, isFalse);
+      final none = await BookingRepository(client).searchForCheckIn(stationId, 'CK0000000000');
+      expect(none.bookings, isEmpty);
     });
   });
 
@@ -169,7 +170,7 @@ void main() {
       final staff = await admin.staff();
       expect(staff.map((s) => s.email), containsAll(['admin@chargekaro.local', 'ops@chargekaro.local']));
       expect(staff.firstWhere((s) => s.email == 'ops@chargekaro.local').overrides, isNotEmpty);
-      expect(await admin.permissions(), hasLength(21));
+      expect(await admin.permissions(), hasLength(22));
       expect((await admin.settings()).map((s) => s['key']), contains('booking_fee_paise'));
       expect(await admin.audit(limit: 5), isNotEmpty);
       expect(await onboarding.pendingChangeRequests(), isA<List<Map<String, dynamic>>>());

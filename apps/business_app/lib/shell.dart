@@ -5,6 +5,7 @@ import 'package:shared_data/shared_data.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import 'pages/more/team_page.dart';
 import 'push.dart';
 import 'state.dart';
 
@@ -30,7 +31,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     final access = ref.watch(currentAccessProvider);
     final canBookings = access?.can(BusinessPermission.bookingsView) ?? false;
     final canCheckIn = access?.can(BusinessPermission.bookingsCheckin) ?? false;
-    final unread = ref.watch(unreadNotificationsProvider).value ?? 0;
+    final unread = (ref.watch(unreadNotificationsProvider).value ?? 0) + ref.watch(pendingTeamRequestsProvider);
 
     final tabs = <(int, NavigationDestination)>[
       (0, const NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Home')),

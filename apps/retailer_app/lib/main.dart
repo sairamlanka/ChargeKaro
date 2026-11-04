@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'data/local_store.dart';
+import 'data/reminders.dart';
 import 'state/providers.dart';
 
 void main() {
@@ -31,6 +32,7 @@ Future<Widget> _start() async {
     // Storage blocked (private browsing): keep working without memory.
     store = await LocalStore.memory();
   }
+  final reminders = await LocalReminderScheduler.create();
   return ProviderScope(
     // Screens decide when to retry; automatic retries would hide failures.
     retry: (_, _) => null,
@@ -38,6 +40,7 @@ Future<Widget> _start() async {
       appConfigProvider.overrideWithValue(config),
       supabaseClientProvider.overrideWithValue(Supabase.instance.client),
       localStoreProvider.overrideWithValue(store),
+      reminderSchedulerProvider.overrideWithValue(reminders),
     ],
     child: const RetailApp(),
   );
