@@ -170,7 +170,7 @@ void main() {
       final staff = await admin.staff();
       expect(staff.map((s) => s.email), containsAll(['admin@chargekaro.local', 'ops@chargekaro.local']));
       expect(staff.firstWhere((s) => s.email == 'ops@chargekaro.local').overrides, isNotEmpty);
-      expect(await admin.permissions(), hasLength(21));
+      expect(await admin.permissions(), hasLength(22));
       expect((await admin.settings()).map((s) => s['key']), contains('booking_fee_paise'));
       expect(await admin.audit(limit: 5), isNotEmpty);
       expect(await onboarding.pendingChangeRequests(), isA<List<Map<String, dynamic>>>());
